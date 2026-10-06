@@ -2,7 +2,7 @@
 param(
     [string] $Output = (Join-Path $PSScriptRoot 'dist\JARVIS-Friends-Bootstrap.zip'),
     [string] $Version = '1.0.0',
-    [string] $UpdateManifestUrl = 'https://github.com/QcShadow/YourJarvis-link/releases/latest/download/update.json',
+    [string] $UpdateManifestUrl = 'https://github.com/QcShadow/YourJarvis-link/releases/latest/download/update-github.json',
     [string] $MirrorUpdateManifestUrl = 'https://gitee.com/QcShadow/your-jarvis-link/raw/main/update.json'
 )
 $ErrorActionPreference = 'Stop'

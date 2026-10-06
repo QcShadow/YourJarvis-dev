@@ -3,7 +3,7 @@ param(
     [string] $OutputDirectory = (Join-Path $PSScriptRoot 'dist\link-full-desktop'),
     [ValidatePattern('^\d+\.\d+\.\d+([+-][0-9A-Za-z.-]+)?$')]
     [string] $Version = '1.0.0',
-    [string] $UpdateManifestUrl = 'https://github.com/QcShadow/YourJarvis-link/releases/latest/download/update.json',
+    [string] $UpdateManifestUrl = 'https://github.com/QcShadow/YourJarvis-link/releases/latest/download/update-github.json',
     [string] $MirrorUpdateManifestUrl = 'https://gitee.com/QcShadow/your-jarvis-link/raw/main/update.json'
 )
 $ErrorActionPreference = 'Stop'
