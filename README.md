@@ -1,220 +1,142 @@
 <div align="center">
-  <img alt="OpenJarvis" src="assets/OpenJarvis_Horizontal_Logo.png" width="400">
+  <img src="assets/readme/hero.svg" alt="YourJarvis · Development · 本地 AI，属于你的桌面助手" width="100%">
 
-  <p><i>Personal AI, On Personal Devices.</i></p>
-
+  <h1>YourJarvis · 开发版</h1>
+  <p><strong>中文优先的 Windows AI 桌面助手</strong></p>
+  <p>本地模型 · 语音对话 · 持久记忆 · 朋友共享</p>
   <p>
-    <a href="https://arxiv.org/abs/2605.17172"><img src="https://img.shields.io/badge/arXiv-2605.17172-b31b1b.svg" alt="arXiv"></a>
-    <a href="https://openjarvis.stanford.edu/"><img src="https://img.shields.io/badge/project-OpenJarvis-blue" alt="Project"></a>
-    <a href="https://open-jarvis.github.io/OpenJarvis/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Docs"></a>
-    <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python">
-    <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License">
-    <a href="https://discord.gg/CMVBmDQ5Fj"><img src="https://img.shields.io/badge/discord-join-7289da?logo=discord&logoColor=white" alt="Discord"></a>
-    <a href="https://x.com/OpenJarvisAI"><img src="https://img.shields.io/badge/X-@OpenJarvisAI-black?logo=x&logoColor=white" alt="X / Twitter"></a>
+    <a href="#功能一览">功能一览</a> ·
+    <a href="#开始开发">开始开发</a> ·
+    <a href="#文档导航">文档导航</a> ·
+    <a href="https://github.com/QcShadow/YourJarvis-link/releases">下载朋友版</a> ·
+    <a href="https://gitee.com/QcShadow/your-jarvis-link/releases">国内下载</a>
   </p>
 </div>
 
-> **YourJarvis development repository.** This private fork contains the
-> personalized Windows desktop, voice, sharing, model-routing and deployment
-> work used by QcShadow. Public friend builds are published separately at
-> [YourJarvis-link](https://github.com/QcShadow/YourJarvis-link/releases).
-
-## YourJarvis 与 OpenJarvis 的关系
-
-YourJarvis 是 QcShadow 基于 [OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
-开发的个人定制分支，不是 OpenJarvis 官方项目，也不代表 OpenJarvis 官方立场。
-本仓库保留上游项目的基础框架、部分文档、测试和 Apache-2.0 许可，同时加入了面向
-Windows 个人使用和朋友分享的定制功能。
-
-YourJarvis 目前额外维护的内容包括：
-
-- 中文优先的 JARVIS 桌面体验、语音接听与播报、角色和本地记忆配置；
-- 本地模型、兼容 API 和 JARVIS 远程主机的统一配置入口；
-- 朋友共享网关、邀请令牌、轻量 ZIP 便携包和首次安装自检；
-- Windows 桌面启动器、更新检查、GitHub/Gitee 多渠道更新下载；
-- 面向实际分享场景的部署脚本、模型按需下载和运行时打包。
-
-上游 OpenJarvis 的研究框架、官方文档、论文、社区和发布节奏仍由原作者维护。
-如果你要寻找官方版本，请访问 [OpenJarvis 官方仓库](https://github.com/open-jarvis/OpenJarvis)。
-
 ---
 
-<div align="center">
-  <img alt="OpenJarvis demo reel" src="assets/openjarvis_demo_reel.webp" width="75%">
-</div>
+**YourJarvis** 是 QcShadow 基于 [OpenJarvis](https://github.com/open-jarvis/OpenJarvis) 维护的个人定制分支，面向 Windows 桌面使用与朋友分享。这里维护源码、测试和构建流程；可直接安装的成品发布在 **YourJarvis Link**。
 
----
+> **想直接使用？** 前往 [GitHub Releases](https://github.com/QcShadow/YourJarvis-link/releases) 或 [Gitee 发行版](https://gitee.com/QcShadow/your-jarvis-link/releases)，下载 `JARVIS-Setup-0.1.3.exe`，双击进入中文安装向导。
 
-> **[Documentation](https://open-jarvis.github.io/OpenJarvis/)**
->
-> **[Project Site](https://openjarvis.stanford.edu/)**
->
-> **[Paper](https://arxiv.org/abs/2605.17172)**
->
-> **[Leaderboard](https://open-jarvis.github.io/OpenJarvis/leaderboard/)**
->
-> **[Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/)**
+## 功能一览
 
-## 上游 OpenJarvis 项目简介
+| 能力 | 使用体验 |
+| :--- | :--- |
+| **桌面交互** | 中文优先的聊天界面、浅色／深色主题、角色配色和 Windows 托盘入口 |
+| **模型连接** | 在本地 Ollama、兼容 API 和 JARVIS 共享主机之间选择 |
+| **语音对话** | 本地中文／英文识别与播报，可选唤醒监听；按方案准备语音资源 |
+| **持久记忆** | 角色、用户偏好与记忆独立于模型权重维护，便于更换模型 |
+| **朋友共享** | 独立共享网关、邀请令牌、撤销、排队和速率限制 |
+| **安装与更新** | 中文单 EXE 向导、Gitee 优先与 GitHub 回退、断点续传和 SHA-256 校验 |
 
-Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
+本地模型和已安装的本地语音可离线运行。选择第三方 API 或共享主机时，推理由相应服务处理；首次准备依赖与模型需要联网。
 
-OpenJarvis is the upstream local-first personal AI framework on which this fork is based. It provides shared primitives for on-device agents, evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy, and a learning loop that improves models using local trace data. The upstream project aims to be both a research platform and a production foundation for local AI.
+## 选择合适的版本
 
-## YourJarvis Windows 朋友版
+| | 开发版 · 本仓库 | 朋友版 · YourJarvis Link |
+| :--- | :--- | :--- |
+| **适合谁** | 修改代码、调试模型、构建应用的开发者 | 希望直接安装使用的 Windows 用户 |
+| **交付内容** | 源码、测试、文档、部署和打包脚本 | 安装 EXE、发行说明和更新清单 |
+| **开始方式** | 克隆源码，配置开发环境 | 下载 EXE，按中文向导安装 |
+| **入口** | [开始开发](#开始开发) | [GitHub 下载](https://github.com/QcShadow/YourJarvis-link/releases) · [Gitee 下载](https://gitee.com/QcShadow/your-jarvis-link/releases) |
 
-朋友使用的成品不需要克隆源码仓库。请从
-[YourJarvis-link Releases](https://github.com/QcShadow/YourJarvis-link/releases)
-或国内的 [Gitee 发行版](https://gitee.com/QcShadow/your-jarvis-link/releases)
-下载 `JARVIS-Setup-0.1.3.exe`，直接双击并按中文图形向导安装。
-安装器优先从 Gitee 下载 Python、依赖、默认轻量模型及所选语音，失败自动切换 GitHub，
-支持续传和完整校验。实际模型连接、后端、页面及聊天通过后才显示安装完成。
-更新时运行新版 EXE 并选择原安装目录，保留配置、聊天、记忆和模型。
+## 开始开发
 
-开发者如果要构建朋友版，请阅读
-[`docs/yourjarvis-release.md`](docs/yourjarvis-release.md)。
+### 1. 准备环境
 
-## 上游 OpenJarvis 开发安装
+| 依赖 | 要求 |
+| :--- | :--- |
+| Python | `3.10–3.13`，以 `pyproject.toml` 为准 |
+| uv | Python 依赖与虚拟环境管理 |
+| Node.js / npm | 前端开发需要 Node.js `22.22+`、npm `11.19.x` |
+| 推理服务 | 本地 Ollama，或自行配置的兼容 API |
 
-Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
+### 2. 获取源码与依赖
 
-| Platform | One-liner |
-|---|---|
-| **macOS · Linux · WSL2** | `curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh \| bash` |
-| **Native Windows** | `irm https://open-jarvis.github.io/OpenJarvis/install.ps1 \| iex` |
-| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/open-jarvis/OpenJarvis/releases) |
-
-Then `jarvis` to start. The Rust extension and larger models continue downloading in the background; `jarvis doctor` shows status.
-
-Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://open-jarvis.github.io/OpenJarvis/getting-started/install/).
-
-## Quick Start
-
-```bash
-jarvis                          # start chatting (default: chat-simple)
-jarvis gui                      # start the graphical browser interface
-jarvis init --preset <name> --force  # replace config with a starter preset
+```powershell
+git clone https://github.com/QcShadow/YourJarvis-dev.git
+cd YourJarvis-dev
+uv sync --extra dev --extra desktop
 ```
 
-`jarvis gui` starts the local API server and frontend, then opens the graphical
-chat interface in your default browser. It requires Node.js 22+ and is
-available from a source checkout; packaged desktop installers are available
-from the [latest release](https://github.com/open-jarvis/OpenJarvis/releases).
+配置模型与使用命令行：
 
-> Prefix `jarvis ...` with `uv run`, or `source .venv/bin/activate` first.
-
-| Preset | What it does |
-|---|---|
-| `morning-digest-mac` / `morning-digest-linux` / `morning-digest-minimal` | Spoken daily briefing from email, calendar, health, news |
-| `deep-research` | Multi-hop research across indexed docs with citations |
-| `code-assistant` | Agent with code execution, file I/O, and shell access |
-| `scheduled-monitor` | Stateful agent on a schedule with memory |
-| `chat-simple` | Lightweight conversation, no tools |
-
-Example:
-
-```bash
-jarvis init --preset morning-digest-mac --force
-jarvis connect gdrive          # one OAuth covers Gmail / Calendar / Tasks
-jarvis digest --fresh          # generate and play your first briefing
+```powershell
+uv run jarvis init
+uv run jarvis doctor
+uv run jarvis ask "你好，请用一句话介绍自己。"
 ```
 
-Per-preset deep dives: [morning digest](https://open-jarvis.github.io/OpenJarvis/user-guide/morning-digest/) · [deep research](https://open-jarvis.github.io/OpenJarvis/user-guide/deep-research/) · [code assistant](https://open-jarvis.github.io/OpenJarvis/user-guide/code-assistant/) · [scheduled monitor](https://open-jarvis.github.io/OpenJarvis/user-guide/scheduled-monitor/) · [chat simple](https://open-jarvis.github.io/OpenJarvis/user-guide/chat-simple/) · or the full [quickstart guide](https://open-jarvis.github.io/OpenJarvis/getting-started/quickstart/).
+### 3. 构建并启动界面
 
-### Skills
+在源码根目录执行：
 
-Skills teach agents how to better use tools and improve their reasoning. Every skill is a tool — agents discover them from a catalog and invoke them on demand.
-
-```bash
-# Install skills from public sources
-jarvis skill install hermes:arxiv
-jarvis skill sync hermes --category research
-
-# Use skills with any agent
-jarvis ask "Use the code-explainer skill to explain this Python code: for i in range(5): print(i*2)"
-
-# Optimize skills from your trace history
-jarvis optimize skills --policy dspy
-
-# Benchmark the impact
-jarvis bench skills --max-samples 5 --seeds 42
+```powershell
+cd frontend
+npm ci
+npm run build
+cd ..
+uv run jarvis gui
 ```
 
-Import from [Hermes Agent](https://github.com/NousResearch/hermes-agent) (~150 skills), [OpenClaw](https://github.com/openclaw/skills) (~13,700 community skills), or any GitHub repo. Skills follow the [agentskills.io](https://agentskills.io/specification) open standard.
+`jarvis gui` 启动本地后端和浏览器界面。原生 Windows 启动器及朋友版安装 EXE 的构建流程见 [发布说明](docs/yourjarvis-release.md)；需要语音或其他后端时，按对应文档准备额外依赖和模型。
 
-See the [Skills User Guide](https://open-jarvis.github.io/OpenJarvis/user-guide/skills/) and [Skills Tutorial](https://open-jarvis.github.io/OpenJarvis/tutorials/skills-workflow/) for details.
+### 4. 验证改动
 
-### Built-in Agents
-
-OpenJarvis ships with eight built-in agents across three execution modes (on-demand, scheduled, continuous):
-
-| Agent | Type | What it does |
-|-------|------|-------------|
-| `morning_digest` | Scheduled | Daily briefing from email, calendar, health, news — with TTS audio |
-| `deep_research` | On-demand | Multi-hop research with citations across web and local docs |
-| `monitor_operative` | Continuous | Long-horizon monitoring with memory, compression, and retrieval |
-| `orchestrator` | On-demand | Multi-turn reasoning with automatic tool selection |
-| `native_react` | On-demand | ReAct (Thought-Action-Observation) loop agent |
-| `operative` | Continuous | Persistent autonomous agent with state management |
-| `native_openhands` | On-demand | CodeAct — generates and executes Python code |
-| `simple` | On-demand | Single-turn chat, no tools |
-
-See the [User Guide](https://open-jarvis.github.io/OpenJarvis/user-guide/morning-digest/) and [Tutorials](https://open-jarvis.github.io/OpenJarvis/tutorials/) for detailed setup instructions.
-
-Full documentation — including Docker deployment, cloud engines, development setup, and tutorials — at **[open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)**.
-
-## Community
-
-- **GitHub:** [github.com/open-jarvis/OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
-- **Discord:** [discord.gg/CMVBmDQ5Fj](https://discord.gg/CMVBmDQ5Fj)
-- **X / Twitter:** [@OpenJarvisAI](https://x.com/OpenJarvisAI)
-- **Docs:** [open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)
-
-## Contributing
-
-We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for incentives, contribution types, and the PR process.
-
-Quick start for contributors:
-
-```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
-uv sync --extra dev
-uv run pre-commit install
+```powershell
 uv run pytest tests/ -v
 ```
 
-Browse the [Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/) for areas where help is needed. Comment **"take"** on any issue to get auto-assigned.
+前端改动可在 `frontend` 目录运行 `npm test` 与 `npm run build`。需要真实推理服务或特定硬件的测试，请按 [开发指南](docs/development/contributing.md) 配置环境。
 
-## About
+## 文档导航
 
-OpenJarvis is part of [Intelligence Per Watt](https://www.intelligence-per-watt.ai/), a research initiative studying the intelligence efficiency of AI systems. The project is developed at [Hazy Research](https://hazyresearch.stanford.edu/) and the [Scaling Intelligence Lab](https://scalingintelligence.stanford.edu/) at [Stanford SAIL](https://ai.stanford.edu/).
+| 想了解什么 | 从这里开始 |
+| :--- | :--- |
+| 基本使用与配置 | [快速开始](docs/getting-started/quickstart.md) · [配置说明](docs/getting-started/configuration.md) |
+| Windows 环境 | [原生 Windows 指南](docs/getting-started/windows-native.md) |
+| 系统如何工作 | [架构概览](docs/architecture/overview.md) · [模型引擎](docs/architecture/engine.md) · [记忆](docs/architecture/memory.md) |
+| 修改与测试源码 | [开发指南](docs/development/contributing.md) · [贡献说明](CONTRIBUTING.md) |
+| 打包与发布朋友版 | [YourJarvis 发布流程](docs/yourjarvis-release.md) · [0.1.3 安装器说明](docs/installer-0.1.3.md) |
+| 上游框架与研究 | [OpenJarvis 仓库](https://github.com/open-jarvis/OpenJarvis) · [项目文档](https://open-jarvis.github.io/OpenJarvis/) |
 
-## Sponsors
+## 仓库结构
 
-<p>
-  <a href="https://www.laude.org/">Laude Institute</a> &bull;
-  <a href="https://datascience.stanford.edu/marlowe">Stanford Marlowe</a> &bull;
-  <a href="https://cloud.google.com/">Google Cloud Platform</a> &bull;
-  <a href="https://lambda.ai/">Lambda Labs</a> &bull;
-  <a href="https://ollama.com/">Ollama</a> &bull;
-  <a href="https://research.ibm.com/">IBM Research</a> &bull;
-  <a href="https://hai.stanford.edu/">Stanford HAI</a>
-</p>
+```text
+src/openjarvis/        Python 后端、模型引擎、语音、记忆与工具
+frontend/             React + TypeScript 桌面聊天界面
+deploy/yourjarvis/     Windows 启动器、安装器与发布配置
+deploy/share/          应用与运行资源打包
+tests/                Python 测试
+docs/                 使用、架构、开发与发布文档
+```
 
-## Citation
+## 发布约定
+
+从干净的 Git 快照构建朋友版，按需发布运行库和模型资源。发布包不包含制作者的密钥、私人配置、聊天、记忆或浏览器数据；完整构建与安装验证要求见 [发布流程](docs/yourjarvis-release.md)。
+
+朋友版目前采用 **0.1.3 单 EXE 安装流程**。升级时退出应用，运行新版安装器并选择原安装目录，保留已有配置、聊天、记忆和模型。
+
+## 致谢与许可
+
+YourJarvis 保留 OpenJarvis 的基础框架、部分文档与测试，遵循 [Apache License 2.0](LICENSE)。它是个人定制分支，不代表 OpenJarvis 官方项目或官方发布。
+
+OpenJarvis 由 Stanford 的 Hazy Research、Scaling Intelligence Lab 等原作者维护。请访问 [官方仓库](https://github.com/open-jarvis/OpenJarvis)、[官方项目网站](https://openjarvis.stanford.edu/) 和 [论文](https://arxiv.org/abs/2605.17172) 了解上游成果。随包分发的第三方组件保留各自许可证和声明。
+
+<details>
+<summary>引用上游 OpenJarvis 论文</summary>
+
 ```bibtex
 @misc{saadfalcon2026openjarvispersonalaipersonal,
-      title={OpenJarvis: Personal AI, On Personal Devices}, 
-      author={Jon Saad-Falcon and Avanika Narayan and Robby Manihani and Tanvir Bhathal and Herumb Shandilya and Hakki Orhun Akengin and Gabriel Bo and Andrew Park and Matthew Hart and Caia Costello and Chuan Li and Christopher Ré and Azalia Mirhoseini},
-      year={2026},
-      eprint={2605.17172},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2605.17172}, 
+  title={OpenJarvis: Personal AI, On Personal Devices},
+  author={Jon Saad-Falcon and Avanika Narayan and Robby Manihani and Tanvir Bhathal and Herumb Shandilya and Hakki Orhun Akengin and Gabriel Bo and Andrew Park and Matthew Hart and Caia Costello and Chuan Li and Christopher Ré and Azalia Mirhoseini},
+  year={2026},
+  eprint={2605.17172},
+  archivePrefix={arXiv},
+  primaryClass={cs.LG},
+  url={https://arxiv.org/abs/2605.17172}
 }
 ```
 
-## License
-
-[Apache 2.0](LICENSE)
+</details>
