@@ -4,7 +4,7 @@ YourJarvis 的 Windows 朋友版发布仓库。
 
 YourJarvis 是 QcShadow 基于 [OpenJarvis 官方项目](https://github.com/open-jarvis/OpenJarvis)
 开发的个人定制分支。OpenJarvis 提供基础的本地 AI 框架；YourJarvis 在此基础上增加了中文优先的
-Windows 桌面体验、语音、本地记忆、朋友共享、轻量 ZIP 发布包和多渠道更新。这个仓库只发布
+Windows 桌面体验、语音、本地记忆、朋友共享、单 EXE 安装包和多渠道更新。这个仓库只发布
 YourJarvis 的朋友版成品，不是 OpenJarvis 官方发布仓库。
 
 正式版本请从 [GitHub Releases](https://github.com/QcShadow/YourJarvis-link/releases) 或国内的 [Gitee 发行版](https://gitee.com/QcShadow/your-jarvis-link/releases) 下载 **JARVIS-Setup-0.1.3.exe**，直接双击，按中文向导完成安装，无需解压或输入命令。
@@ -23,4 +23,4 @@ YourJarvis 的朋友版成品，不是 OpenJarvis 官方发布仓库。
 
 从旧版升级：从托盘退出应用，运行新版安装 EXE，选择原来的安装目录。向导保留现有配置、密钥、data、models 和 logs，并清理旧 bootstrap / 独立语音下载入口。无需另外运行 setup-jarvis.cmd。
 
-不要直接在压缩包内运行，也不要安装到 `Program Files`。
+建议使用默认安装位置或独立文件夹。
