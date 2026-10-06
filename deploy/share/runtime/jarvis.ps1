@@ -6,8 +6,8 @@ param(
 
 . (Join-Path $PSScriptRoot 'env.ps1')
 
-if (-not (Test-Path -LiteralPath $script:JarvisUv)) {
-    throw "uv was not found at $script:JarvisUv"
+if (-not (Test-Path -LiteralPath (Join-Path $script:JarvisSource '.venv\Scripts\python.exe'))) {
+    throw '请运行 JARVIS-Install.exe 完成或修复安装。'
 }
 
 $effectiveArgs = @($JarvisArgs)

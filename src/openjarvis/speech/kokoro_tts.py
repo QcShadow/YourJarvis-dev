@@ -108,6 +108,10 @@ class KokoroTTSBackend(TTSBackend):
                     "kokoro package not installed. Install with: pip install kokoro"
                 ) from exc
             try:
+                if lang_code != "z":
+                    from openjarvis.speech._espeak_windows import prepare_espeak_windows
+
+                    prepare_espeak_windows()
                 if lang_code == "z":
                     # jieba logs dictionary-cache details at INFO on every new
                     # process; keep the interactive voice UI focused on the

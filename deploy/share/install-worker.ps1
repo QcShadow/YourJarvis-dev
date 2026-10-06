@@ -86,7 +86,6 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path $Root 'runtimes\ollama\ollama.exe'))) { Resource 'ollama-cpu' }
         $script:JarvisOllama = Join-Path $Root 'runtimes\ollama\ollama.exe'
         if ($request.model -eq 'qwen2.5:0.5b') { Resource 'llm-lite' }
-        elseif ($request.model -eq 'qwen3:1.7b') { Resource 'llm-balanced' }
         & (Join-Path $Root 'start-ollama.ps1')
         $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
         if ($request.model -notin @($tags.models | ForEach-Object { $_.name })) {

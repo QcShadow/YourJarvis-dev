@@ -1,6 +1,7 @@
 """Exercise the selected neural voice before declaring installation complete."""
 
 import argparse
+import os
 from pathlib import Path
 
 
@@ -9,6 +10,8 @@ def main():
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--voice", required=True)
     args = parser.parse_args()
+    args.root = args.root.resolve()
+    os.chdir(args.root)
     import numpy as np
     import sherpa_onnx
     from kokoro import KPipeline
@@ -28,6 +31,9 @@ def main():
     if english:
         from faster_whisper import WhisperModel
 
+        from openjarvis.speech._espeak_windows import prepare_espeak_windows
+
+        prepare_espeak_windows()
         WhisperModel(
             str(speech / "whisper-small.en"),
             device="cpu",

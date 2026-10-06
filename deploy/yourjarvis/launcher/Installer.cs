@@ -114,7 +114,7 @@ internal sealed class InstallWizard : Form
         bool api = profile.SelectedIndex == 2;
         profile.Enabled = model.Enabled = voice.Enabled = !preserve.Checked;
         url.Enabled = key.Enabled = api && !preserve.Checked;
-        hint.Text = preserve.Checked ? "修复将读取并保留现有模型、密钥、人物设置和记忆，不重建配置。" : api ? "地址示例：https://api.example.com/v1。模型名称由服务商提供。安装会发送一次短请求验证连接，可能产生极少量 API 用量。" : "向导会自动检查并安装 Ollama、下载所选模型。文字模式至少预留 4 GB，语音模式建议预留 10 GB。下载速度取决于网络。";
+        hint.Text = preserve.Checked ? "修复将读取并保留现有模型、密钥、人物设置和记忆，不重建配置。" : api ? "地址示例：https://api.example.com/v1。模型名称由服务商提供。安装会发送一次短请求验证连接，可能产生极少量 API 用量。" : profile.SelectedIndex == 1 ? "请填写本机已安装的 Ollama 模型名称。自定义模型不包含国内资源镜像。" : "向导会自动安装 Ollama，并从发布地址下载轻量模型。文字模式至少预留 4 GB，语音模式建议预留 10 GB。";
     }
     private void ShowPage()
     {
