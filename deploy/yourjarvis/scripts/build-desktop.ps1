@@ -26,6 +26,14 @@ foreach ($required in @($compiler, $core, $forms)) {
     (Join-Path $jarvisRoot 'launcher\Desktop.cs') `
     (Join-Path $jarvisRoot 'launcher\UpdateChecker.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Desktop compilation failed' }
+& $compiler /nologo /target:winexe /platform:x64 /optimize+ `
+    "/out:$desktopOutput\JARVIS-Install.exe" `
+    "/win32manifest:$jarvisRoot\launcher\Desktop.manifest" `
+    /reference:System.Windows.Forms.dll /reference:System.Drawing.dll `
+    /reference:System.Web.Extensions.dll `
+    (Join-Path $jarvisRoot 'launcher\Installer.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+Copy-Item -LiteralPath (Join-Path $jarvisRoot 'launcher\Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS-Install.exe.config') -Force
 Copy-Item -LiteralPath (Join-Path $desktopOutput 'JARVIS-Desktop.exe') -Destination (Join-Path $desktopOutput 'JARVIS.exe') -Force
 Copy-Item -LiteralPath (Join-Path $jarvisRoot 'launcher\Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS.exe.config') -Force
 Copy-Item -LiteralPath (Join-Path $jarvisRoot 'launcher\Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS-Desktop.exe.config') -Force

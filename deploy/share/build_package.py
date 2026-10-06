@@ -72,15 +72,22 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
         add(share / "runtime" / name, name)
     add(root / "tools/uv/uv.exe", "tools/uv/uv.exe")
     for name in (
+        "install-jarvis.ps1",
+        "install-jarvis.cmd",
+        "install-worker.ps1",
         "bootstrap.ps1",
         "bootstrap.cmd",
         "download-speech.ps1",
         "download-speech.cmd",
     ):
         add(share / name, name)
+    add(share / "configure_portable.py", "scripts/configure_portable.py")
     add(share / "download_speech_assets.py", "scripts/download_speech_assets.py")
     add(share / "README.zh-CN.md", "使用说明.md")
     if desktop:
+        # Generated UI assets are ignored by Git; a clean snapshot must build them.
+        if not (source / "server/static/index.html").is_file():
+            raise FileNotFoundError("Build the frontend before packaging the desktop release.")
         binaries = root / "dist/share-desktop"
         if not binaries.is_dir():
             binaries = root
@@ -93,6 +100,8 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             "Microsoft.Web.WebView2.WinForms.dll",
             "WebView2Loader.dll",
             "app-version.json",
+            "JARVIS-Install.exe",
+            "JARVIS-Install.exe.config",
         ):
             add(binaries / name, name)
     add(share / "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md")

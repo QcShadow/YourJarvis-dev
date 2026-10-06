@@ -1,3 +1,4 @@
 @echo off
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-jarvis.ps1" %*
-pause
+setlocal
+powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0install-jarvis.ps1" %*
+exit /b %errorlevel%

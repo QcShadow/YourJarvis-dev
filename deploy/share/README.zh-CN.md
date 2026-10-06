@@ -4,11 +4,17 @@
 
 ## 朋友在自己的电脑上使用
 
-1. 解压到自己可写的目录，例如 `C:\JARVIS`。不要放在 `Program Files`。
-2. 先用文字：双击 `bootstrap.cmd`。需要中文语音则在 PowerShell 执行 `./bootstrap.cmd -Voice`，依赖会更大。
-3. 本地模型方案安装 [Ollama Windows](https://ollama.com/download/windows)。API 方案可直接用兼容 API，或自行启动 LM Studio / llama.cpp / vLLM 服务。
-4. 双击 `setup-jarvis.cmd`，选择模型方案、自己的模型 ID / API 地址、语音预设。密钥输入不会回显，单独保存在本机 `credentials.toml`，不进入配置和分享包。本地模型未安装时，向导启动脚本会下载所选模型。只保存配置可执行 `./setup-jarvis.cmd -NoModelDownload`。
-5. 双击 `start-gui.cmd` 使用网页；有桌面启动器的包也可打开 `JARVIS.exe`。声音包缺失时先进行文字聊天；可运行 `download-speech.cmd` 补中文模型、`download-speech.cmd -English` 补英文识别，再确认已经运行过 `bootstrap.cmd -Voice`。
+1. 完整解压 ZIP 到自己的可写目录，例如 `D:\YourJarvis`。不要直接在压缩包里运行。
+2. 双击 **`JARVIS-Install.exe`** 打开中文图形安装向导。
+3. 按窗口顺序选择安装目录、模型与语音方案，再点击“开始安装”。不确定时保持“轻量本地模型”和“先使用文字”。本地模型无需 API 密钥；使用 API 时填入服务商提供的地址、模型名称和密钥。
+4. 向导自动检查安装包、安装 Python 与依赖、补齐 WebView2 / Ollama、下载所选模型和语音、测试模型连接，最后保存配置和自检。首次安装请保持联网，至少预留 4 GB；语音建议预留 10 GB。API 检查会发送一次很短的测试请求。
+5. 完成后点击“启动 JARVIS”，以后直接使用桌面快捷方式或 `JARVIS.exe`。首次双击 `JARVIS.exe` 也会在缺少环境时打开同一个向导。
+
+**遇到失败**：窗口下方会显示原因，可点“打开日志”；检查网络后点“重试安装”，或点“上一步”修改方案。已完成的依赖与模型下载会复用。请先退出已有 JARVIS 再安装或修复。
+
+**从 0.1.1 升级**：退出 JARVIS，将新版 `JARVIS-Share` 内的文件解压覆盖到原目录，保留 `config.toml`、`credentials.toml`、`data`、`models`、`logs`。再打开 `JARVIS-Install.exe`，默认勾选“保留此目录的现有配置，仅修复运行环境”。要重新选择方案可取消该选项；旧配置会先备份。`bootstrap.cmd`、`setup-jarvis.cmd` 都会进入同一个图形向导，无需分别运行。
+
+密钥输入会隐藏，单独保存于本机 `credentials.toml`，不会出现在安装命令参数或安装日志中。
 
 设置页的“模型与首次配置预设”支持轻量模型、已有 Ollama 模型、兼容 API 地址和密钥。保存会备份旧配置，保留人物提示词、语音、个人记忆设置。应用需重新启动后端才能切换：先 `stop-gui.cmd`，再 `start-gui.cmd`。托盘窗口的关闭按钮仅隐藏窗口，不代表后端已重启。
 
@@ -93,4 +99,4 @@ tailscale serve --bg http://127.0.0.1:8001
 
 打包脚本依照 `deploy/share/runtime` 中的可复用启动脚本收集文件；模型仅按一个已选 Ollama manifest 的 SHA256 内容寻址，不会复制整个 `models/ollama`。包内包含逐文件 SHA256 清单。生成前如修改根目录启动脚本，需同步到该 runtime 模板目录。源代码变更和模型权重应在分发前重新构建与校验。
 
-引导包不会复制 `.venv`、GPU 工具链、Qwen-TTS、其他大型模型、用户私有数据，也不包含完整 Ollama 运行时。朋友需安装 Ollama 或自己提供 API。已经运行的系统 Ollama 可能使用另一处模型目录；这种情况下向导会下载模型到该服务实际使用的位置。带权重包仍需联网安装 Python 依赖，因此不能称为完全离线版。第三方许可与来源见 `THIRD_PARTY_NOTICES.md`。
+引导包不会复制 `.venv`、GPU 工具链、Qwen-TTS、其他大型模型、用户私有数据，也不预装完整 Ollama 运行时。图形向导会按选择自动下载 Ollama，或连接用户提供的兼容 API。已经运行的系统 Ollama 可能使用另一处模型目录；这种情况下向导会下载模型到该服务实际使用的位置。带权重包仍需联网安装 Python 依赖，因此不能称为完全离线版。第三方许可与来源见 `THIRD_PARTY_NOTICES.md`。

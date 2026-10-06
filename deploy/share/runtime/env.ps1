@@ -1,3 +1,6 @@
+# Ensure cmdlets remain available when launched by a GUI with inherited PSModulePath.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility')
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management')
 $script:JarvisRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $env:OPENJARVIS_HOME = $script:JarvisRoot
@@ -46,16 +49,19 @@ $script:JarvisOllama = Join-Path $script:JarvisRoot 'runtimes\ollama\ollama.exe'
 if (-not (Test-Path -LiteralPath $script:JarvisOllama)) {
     $installedOllama = Get-Command ollama.exe -ErrorAction SilentlyContinue
     if ($installedOllama) { $script:JarvisOllama = $installedOllama.Source }
+    elseif (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe')) {
+        $script:JarvisOllama = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
+    }
 }
 
 function Get-JarvisLaunchConfig {
     $python = Join-Path $script:JarvisSource '.venv\Scripts\python.exe'
     $config = Join-Path $script:JarvisRoot 'config.toml'
     if (-not (Test-Path -LiteralPath $config)) {
-        throw 'Run setup-jarvis.cmd first to choose your own model or API.'
+        throw 'Open JARVIS-Install.exe to complete configuration.'
     }
     if (-not (Test-Path -LiteralPath $python)) {
-        throw 'Run bootstrap.cmd first to install the Python runtime.'
+        throw 'Open JARVIS-Install.exe to install or repair the runtime.'
     }
     # Passing source through stdin preserves quotes in Windows PowerShell 5.1.
     $configReader = @'

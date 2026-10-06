@@ -19,15 +19,18 @@ $ollamaHome = Join-Path $script:JarvisRoot 'runtimes\ollama-home'
 New-Item -ItemType Directory -Path $ollamaHome -Force | Out-Null
 # Ollama has no separate OLLAMA_HOME setting for its small key/config folder.
 # Scope USERPROFILE to this child process only; the Windows account is unchanged.
-$env:USERPROFILE = $ollamaHome
+$previousProfile = $env:USERPROFILE
 
 $stdout = Join-Path $script:JarvisRoot 'logs\ollama.stdout.log'
 $stderr = Join-Path $script:JarvisRoot 'logs\ollama.stderr.log'
-Start-Process -FilePath $script:JarvisOllama `
-    -ArgumentList 'serve' `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $stdout `
-    -RedirectStandardError $stderr | Out-Null
+try {
+    $env:USERPROFILE = $ollamaHome
+    Start-Process -FilePath $script:JarvisOllama `
+        -ArgumentList 'serve' `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdout `
+        -RedirectStandardError $stderr | Out-Null
+} finally { $env:USERPROFILE = $previousProfile }
 
 for ($attempt = 0; $attempt -lt 20; $attempt++) {
     Start-Sleep -Milliseconds 500

@@ -119,6 +119,10 @@ def test_package_excludes_owner_state_and_large_models(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("fixture")
     for name in (
+        "install-jarvis.ps1",
+        "install-jarvis.cmd",
+        "install-worker.ps1",
+        "configure_portable.py",
         "bootstrap.ps1",
         "bootstrap.cmd",
         "download-speech.ps1",

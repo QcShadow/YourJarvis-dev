@@ -172,15 +172,18 @@ internal sealed class JarvisWindow : Form
     {
         try
         {
-            if (!File.Exists(Path.Combine(root, "config.toml")))
+            if (!File.Exists(Path.Combine(root, "config.toml"))
+                || !File.Exists(Path.Combine(root, "src", ".venv", "Scripts", "python.exe")))
             {
-                var setup = new ProcessStartInfo(Path.Combine(root, "setup-jarvis.cmd")) {
+                var setup = new ProcessStartInfo(Path.Combine(root, "JARVIS-Install.exe"), "--no-launch") {
                     WorkingDirectory = root, UseShellExecute = true
                 };
                 using (var configuration = Process.Start(setup))
+                {
                     await Task.Run((Action)configuration.WaitForExit);
-                if (!File.Exists(Path.Combine(root, "config.toml")))
-                    throw new Exception("请先运行 setup-jarvis.cmd 完成模型配置。");
+                    if (configuration.ExitCode != 0)
+                        throw new Exception("安装未完成。请打开 JARVIS-Install.exe 继续安装或修复。");
+                }
             }
             var start = new ProcessStartInfo("powershell.exe",
                 "-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "start-gui.ps1") + "\" -NoBrowser") {
