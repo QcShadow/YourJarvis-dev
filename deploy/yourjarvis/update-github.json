@@ -1,7 +1,7 @@
 {
-  "version": "0.1.1",
-  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.1",
-  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.1/JARVIS-Friends-Bootstrap-0.1.1.zip",
-  "sha256": "38ab7c19f36558520fc84a6a74b205242e2d2740d58a6f3003ee41c00bfd0041",
-  "notes": "双渠道更新：支持 GitHub 与 Gitee，应用内下载朋友版 ZIP。"
+  "version": "0.1.2",
+  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.2",
+  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.2/JARVIS-Friends-Bootstrap-0.1.2.zip",
+  "sha256": "a12260fe574d212ede5797b1f4f7f05d427315737edc36609ac5f7f0e154038f",
+  "notes": "完整中文图形安装向导：自动按顺序安装、模型连接自检、失败重试；修复 Get-FileHash 和桌面依赖问题。"
 }
