@@ -11,7 +11,7 @@ The Windows distribution is built from `D:\Jarvis`:
   -Output D:\Jarvis\dist\JARVIS-Friends-Bootstrap-0.1.0.zip `
   -Version 0.1.0 `
   -UpdateManifestUrl https://github.com/QcShadow/YourJarvis-link/releases/latest/download/update.json `
-  -MirrorUpdateManifestUrl https://gitee.com/QcShadow/YourJarvis-link/raw/main/update.json
+  -MirrorUpdateManifestUrl https://gitee.com/QcShadow/your-jarvis-link/raw/main/update.json
 ```
 
 The bootstrap ZIP excludes model and speech weights. On first use,
