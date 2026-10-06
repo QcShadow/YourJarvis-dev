@@ -143,6 +143,7 @@ def test_get_status_missing():
     assert status["TAVILY_API_KEY"] is False
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits do not describe NTFS ACLs")
 def test_file_permissions(cred_path):
     save_credential("web_search", "TAVILY_API_KEY", "tvly-x", path=cred_path)
     mode = oct(cred_path.stat().st_mode & 0o777)

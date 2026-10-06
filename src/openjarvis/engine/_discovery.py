@@ -37,6 +37,25 @@ def _make_engine(key: str, config: JarvisConfig) -> InferenceEngine:
     """Instantiate a registered engine with the appropriate config host."""
     cls = EngineRegistry.get(key)
 
+    if key == "api":
+        import os
+
+        from openjarvis.core.credentials import get_tool_credential
+
+        cfg = config.engine.api
+        return cls(
+            host=cfg.host,
+            api_key=(
+                get_tool_credential("llm", cfg.api_key_env)
+                if cfg.api_key_env == "JARVIS_LLM_API_KEY"
+                else os.environ.get(cfg.api_key_env)
+            ),
+            default_model=config.intelligence.default_model,
+        )
+    if key == "ollama":
+        cfg = config.engine.ollama
+        return cls(host=cfg.host or None, num_ctx=cfg.num_ctx, num_gpu=cfg.num_gpu)
+
     # LiteLLM cannot enumerate every model supported by every provider.  Its
     # list_models() contract therefore advertises the configured default
     # model, which must be supplied when discovery constructs the engine.
@@ -132,7 +151,10 @@ def discover_engines(config: JarvisConfig) -> List[Tuple[str, InferenceEngine]]:
     # threads collapses that to roughly the slowest single probe. The
     # healthy.sort() below normalizes order, so completion order is
     # irrelevant and the result is identical to the serial version (#263).
-    keys = list(EngineRegistry.keys())
+    keys = [
+        key for key in EngineRegistry.keys()
+        if key != "api" or config.engine.default == "api"
+    ]
 
     def _probe(key: str) -> Tuple[str, InferenceEngine] | None:
         try:

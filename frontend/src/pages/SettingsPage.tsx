@@ -32,19 +32,25 @@ import {
   saveToolCredentials,
   deleteToolCredential,
   isTauri,
+  isNativeDesktop,
   type InferenceSource,
   type MemoryStats,
 } from '../lib/api';
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/UpdateChecker';
+import { useTtsStore } from '../lib/tts';
+import { VoicePersonaSettings } from '../components/VoicePersonaSettings';
+import { DeploymentSettings } from '../components/DeploymentSettings';
+import { PaletteSettings } from '../components/PaletteSettings';
+import { ModelScheduler } from '../components/ModelScheduler';
+import { fetchModels } from '../lib/api';
 
 const CLOUD_KEY_STATUS_CHANGED = 'openjarvis-cloud-key-status-changed';
 
 function OllamaModelList() {
   const [models, setModels] = useState<Array<{ name: string; size: number }>>([]);
   useEffect(() => {
-    fetch('http://localhost:11434/api/tags')
-      .then(r => r.json())
-      .then(data => setModels((data.models || []).map((m: any) => ({ name: m.name, size: m.size }))))
+    fetchModels()
+      .then(data => setModels(data.map((m) => ({ name: m.id, size: 0 }))))
       .catch(() => setModels([]));
   }, []);
   if (models.length === 0) return <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>No models loaded</span>;
@@ -54,7 +60,7 @@ function OllamaModelList() {
         <span key={m.name} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }} />
-          {m.name} ({(m.size / 1e9).toFixed(1)} GB)
+          {m.name}
         </span>
       ))}
     </div>
@@ -287,11 +293,13 @@ const themeOptions: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 export function SettingsPage() {
   const settings = useAppStore((s) => s.settings);
+  const zh = settings.interfaceLanguage === 'zh-CN';
   const updateSettings = useAppStore((s) => s.updateSettings);
   const conversations = useAppStore((s) => s.conversations);
   const serverInfo = useAppStore((s) => s.serverInfo);
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [speechBackendAvailable, setSpeechBackendAvailable] = useState<boolean | null>(null);
+  const [speechProfiles, setSpeechProfiles] = useState<Record<string, { model: string; available: boolean }>>({});
   const [ttsBackend, setTtsBackend] = useState<{ available: boolean; backend?: string; voice_id?: string } | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -394,7 +402,7 @@ export function SettingsPage() {
   useEffect(() => {
     checkHealth().then(setHealthy);
     fetchSpeechHealth()
-      .then((h) => setSpeechBackendAvailable(h.available))
+      .then((h) => { setSpeechBackendAvailable(h.available); setSpeechProfiles(h.profiles || {}); })
       .catch(() => setSpeechBackendAvailable(false));
     fetchTtsHealth()
       .then((h) => setTtsBackend(h))
@@ -476,8 +484,43 @@ export function SettingsPage() {
         </header>
 
         <div className="flex flex-col gap-4">
+          <Section title={zh ? '语言' : 'Language'}>
+            <SettingRow label={zh ? '界面语言' : 'Interface language'} description={zh ? '切换简体中文与英文界面。' : 'Switch interface labels between Simplified Chinese and English.'}>
+              <select
+                value={settings.interfaceLanguage}
+                onChange={(e) => { updateSettings({ interfaceLanguage: e.target.value as 'zh-CN' | 'en-US' }); showSaved(); }}
+                className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
+                style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              >
+                <option value="zh-CN">简体中文</option>
+                <option value="en-US">English</option>
+              </select>
+            </SettingRow>
+            <SettingRow label={zh ? '语音识别语言' : 'Recognition language'} description={zh ? '按语言自动切换听写模型：中文使用中文优化模型并统一输出简体字，英文使用英文专用模型、不翻译。此设置同时用于按键听写和唤醒对话，与界面语言独立。' : 'Automatically selects a Mandarin-optimized or English-only dictation model. Chinese output uses Simplified characters; English is not translated. Applies to push-to-talk and wake conversations, independently of the interface language.'}>
+              <select
+                value={settings.recognitionLanguage}
+                onChange={(e) => { updateSettings({ recognitionLanguage: e.target.value as 'zh' | 'en' }); showSaved(); }}
+                className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
+                style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              >
+                <option value="zh">{zh ? '简体中文（普通话）' : 'Simplified Chinese (Mandarin)'}</option>
+                <option value="en">English</option>
+              </select>
+            </SettingRow>
+          </Section>
+          {Object.keys(speechProfiles).length > 0 && <Section title={zh ? '听写模型' : 'Dictation models'}>
+            {(['zh', 'en'] as const).map((key) => <SettingRow key={key}
+              label={key === 'zh' ? zh ? '简体中文（普通话）' : 'Simplified Chinese (Mandarin)' : 'English'}
+              description={key === 'zh'
+                ? zh ? '中文优化识别，输出简体字。' : 'Mandarin recognition, Simplified Chinese output.'
+                : zh ? '英文专用识别模型，不使用中文模型转写英文。' : 'English-only recognition, independent of the Chinese model.'}>
+              <span className="text-sm">{speechProfiles[key]?.model || '—'} · {speechProfiles[key]?.available
+                ? zh ? '已安装' : 'Installed' : zh ? '未安装' : 'Not installed'}</span>
+            </SettingRow>)}
+          </Section>}
           {/* Appearance */}
           <Section title="Appearance">
+            <PaletteSettings />
             <SettingRow label="Theme" description="Choose how OpenJarvis looks">
               <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
                 {themeOptions.map((opt) => {
@@ -563,7 +606,9 @@ export function SettingsPage() {
           </Section>
 
           {/* Inference source */}
-          <Section title="Inference source">
+          {!isTauri() && <DeploymentSettings zh={zh} />}
+          {!isTauri() && <ModelScheduler />}
+          {isTauri() && <Section title="Inference source">
             <SettingRow label="Source" description="Where the app runs models. Applies after restart.">
               <select
                 value={srcKind}
@@ -614,6 +659,7 @@ export function SettingsPage() {
             </SettingRow>
           </Section>
 
+          }
           {/* Models */}
           <Section title="Models">
             <SettingRow label="Local models (Ollama)" description="Models available for local inference">
@@ -654,7 +700,7 @@ export function SettingsPage() {
 
           {/* Tools */}
           <Section title="Tools">
-            <SettingRow label="Web Search" description="Tavily key for web search tool">
+            <SettingRow label={zh ? '联网搜索' : 'Web Search'} description={zh ? '默认尝试无密钥公共搜索；Tavily 密钥为可选升级。搜索失败会显示错误，不会假装查到了。' : 'Public keyless search is attempted by default; a Tavily key is an optional upgrade. Failures are reported, not invented as results.'}>
               <ApiKeyInput keyName="TAVILY_API_KEY" placeholder="tvly-..." toolName="web_search" />
             </SettingRow>
           </Section>
@@ -758,6 +804,10 @@ export function SettingsPage() {
 
           {/* Model defaults */}
           <Section title="Model Defaults">
+            <SettingRow label={zh ? '自动选模型' : 'Automatic model selection'} description={zh ? '日常对话和工具操作用 Qwen；深度推理时可切换 DeepSeek。' : 'Use Qwen for chat and tools; choose DeepSeek for deep reasoning when installed.'}>
+              <input type="checkbox" checked={settings.automaticModelRouting}
+                onChange={(e) => { updateSettings({ automaticModelRouting: e.target.checked }); showSaved(); }} />
+            </SettingRow>
             <SettingRow label="Temperature" description={`${settings.temperature}`}>
               <input
                 type="range"
@@ -784,9 +834,15 @@ export function SettingsPage() {
 
           {/* Speech */}
           <Section title="Speech">
+            <SettingRow label={zh ? '嘿贾维斯唤醒' : 'Hey Jarvis wake word'} description={isNativeDesktop()
+              ? zh ? '后台接听，关闭到托盘后仍可唤醒。停顿后自动执行；回复后可直接追问。' : 'Background listening continues in the tray. Pause to finish; follow up without repeating the wake phrase.'
+              : zh ? '网页打开期间免按键唤醒，停顿后自动发送。需要麦克风权限。' : 'Hands-free wake and automatic end-of-speech detection while this page is open. Microphone permission is required.'}>
+              <input type="checkbox" checked={settings.speechEnabled && settings.wakeWordEnabled}
+                onChange={(e) => { updateSettings({ wakeWordEnabled: e.target.checked, speechEnabled: e.target.checked }); showSaved(); }} />
+            </SettingRow>
             <SettingRow label="Speech-to-Text" description="Enable microphone input for voice dictation">
               <button
-                onClick={() => { updateSettings({ speechEnabled: !settings.speechEnabled }); showSaved(); }}
+                onClick={() => { updateSettings({ speechEnabled: !settings.speechEnabled, wakeWordEnabled: !settings.speechEnabled }); showSaved(); }}
                 className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
                 style={{
                   background: settings.speechEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
@@ -852,6 +908,18 @@ export function SettingsPage() {
                     : 'Not configured'}
                 </span>
               </div>
+            </SettingRow>
+            <VoicePersonaSettings />
+            <SettingRow label={zh ? '朗读速度' : 'Speaking speed'} description={`${settings.voiceSpeed.toFixed(2)}×`}>
+              <input
+                type="range"
+                min="0.8"
+                max="1.8"
+                step="0.05"
+                value={settings.voiceSpeed}
+                onChange={(e) => { updateSettings({ voiceSpeed: parseFloat(e.target.value) }); showSaved(); }}
+                className="w-32 cursor-pointer accent-[var(--color-accent)]"
+              />
             </SettingRow>
             <SettingRow label="Backend status" description="Requires Whisper, Deepgram, or another speech backend">
               <div className="flex items-center gap-2">

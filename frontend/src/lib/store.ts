@@ -17,6 +17,7 @@ import type {
 import type { ManagedAgent } from './api';
 import { isEmbedOnlyModel } from './model-capabilities';
 import { serializeToolCallArguments } from './tool-call';
+import type { ColorScheme } from './palettes';
 
 export interface CachedConnector {
   connector_id: string;
@@ -93,8 +94,20 @@ function saveConversations(store: ConversationStore): void {
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-interface Settings {
+export interface Settings {
   theme: ThemeMode;
+  colorScheme: ColorScheme;
+  interfaceLanguage: 'zh-CN' | 'en-US';
+  recognitionLanguage: 'zh' | 'en';
+  outputLanguage: 'recognition' | 'zh' | 'en';
+  characterId: 'jarvis-local' | 'mcu-jarvis';
+  voiceProfileZh: string;
+  voiceProfileEn: string;
+  speechPauseMs: number;
+  voiceIdleSeconds: number;
+  interruptWords: string[];
+  wakeWordEnabled: boolean;
+  automaticModelRouting: boolean;
   apiUrl: string;
   // Local server API key (OPENJARVIS_API_KEY). Sent as a Bearer token on
   // /v1 + /api requests so a key-protected `jarvis serve` doesn't 401 the
@@ -108,26 +121,45 @@ interface Settings {
   speechEnabled: boolean;
   voiceOutputEnabled: boolean;
   voiceAutoplay: boolean;
+  voiceId: string;
+  voiceSpeed: number;
 }
 
 function loadSettings(): Settings {
   const defaults: Settings = {
     theme: 'system',
+    colorScheme: 'mcu',
+    interfaceLanguage: 'zh-CN',
+    recognitionLanguage: 'zh',
+    outputLanguage: 'recognition',
+    characterId: 'jarvis-local',
+    voiceProfileZh: 'kokoro-zh-yunjian',
+    voiceProfileEn: 'kokoro-en-george',
+    speechPauseMs: 1400,
+    voiceIdleSeconds: 30,
+    interruptWords: ['停一下', '暂停', '别说了', 'stop', 'pause'],
+    wakeWordEnabled: true,
+    automaticModelRouting: true,
     apiUrl: '',
     apiKey: '',
     fontSize: 'default',
-    defaultModel: '',
+    defaultModel: 'qwen3.5:9b',
     defaultAgent: '',
-    temperature: 0.7,
-    maxTokens: 4096,
-    speechEnabled: false,
-    voiceOutputEnabled: false,
-    voiceAutoplay: false,
+    temperature: 0.3,
+    maxTokens: 1024,
+    speechEnabled: true,
+    voiceOutputEnabled: true,
+    voiceAutoplay: true,
+    voiceId: 'zm_yunjian',
+    voiceSpeed: 1.1,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return defaults;
-    return { ...defaults, ...JSON.parse(raw) };
+    const saved = JSON.parse(raw);
+    // Pause now means standby. Only the explicit speech master switch closes
+    // the microphone; an old pause preference must not disable wake forever.
+    return { ...defaults, ...saved, wakeWordEnabled: saved.speechEnabled !== false };
   } catch {
     return defaults;
   }
@@ -154,6 +186,9 @@ interface AppState {
   activeId: string | null;
   messages: ChatMessage[];
   streamState: StreamState;
+  pendingVoiceCommand: { id: string; text: string } | null;
+  queueVoiceCommand: (text: string) => void;
+  clearVoiceCommand: (id: string) => void;
 
   // Models & server
   models: ModelInfo[];
@@ -185,6 +220,7 @@ interface AppState {
   // Actions: conversations
   loadConversations: () => void;
   importOverlayConversation: () => Promise<void>;
+  syncVoiceConversation: (conversation: Conversation, select: boolean) => void;
   createConversation: (model?: string) => string;
   selectConversation: (id: string) => void;
   deleteConversation: (id: string) => void;
@@ -279,6 +315,9 @@ export const useAppStore = create<AppState>((set, get) => {
         ? initial.conversations[initial.activeId].messages
         : [],
     streamState: INITIAL_STREAM,
+    pendingVoiceCommand: null,
+    queueVoiceCommand: (text: string) => set({ pendingVoiceCommand: { id: generateId(), text } }),
+    clearVoiceCommand: (id: string) => set((s) => s.pendingVoiceCommand?.id === id ? { pendingVoiceCommand: null } : {}),
 
     models: [],
     modelsLoading: true,
@@ -345,6 +384,18 @@ export const useAppStore = create<AppState>((set, get) => {
       } catch {
         // Overlay command unavailable (non-Tauri or no overlay data)
       }
+    },
+
+    syncVoiceConversation: (conversation, select) => {
+      const store = loadConversations();
+      store.conversations[conversation.id] = conversation;
+      if (select) store.activeId = conversation.id;
+      saveConversations(store);
+      set({
+        conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt),
+        ...(select ? { activeId: conversation.id, messages: [...conversation.messages] }
+          : get().activeId === conversation.id ? { messages: [...conversation.messages] } : {}),
+      });
     },
 
     createConversation: (model?: string) => {

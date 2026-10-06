@@ -17,6 +17,7 @@ from openjarvis.engine._base import (
     messages_to_dicts,
 )
 from openjarvis.engine._discovery import discover_engines, discover_models, get_engine
+from openjarvis.engine import configured_api as _configured_api  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

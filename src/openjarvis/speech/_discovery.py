@@ -36,6 +36,12 @@ def _create_backend(
                 device=config.speech.device,
                 compute_type=config.speech.compute_type,
             )
+        elif key == "language-routed":
+            return backend_cls(
+                chinese_model=config.speech.chinese_model,
+                english_model=config.speech.english_model,
+                language=config.speech.language,
+            )
         elif key == "openai":
             api_key = os.environ.get("OPENAI_API_KEY", "")
             if not api_key:

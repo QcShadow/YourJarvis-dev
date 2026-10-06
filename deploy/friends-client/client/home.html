@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS Link</title><link rel="stylesheet" href="home.css"><script src="palette-data.js"></script><script src="theme.js" defer></script><script src="home.js" defer></script></head>
+<body><main>
+  <header><div class="mark">J</div><div><span class="eyebrow">JARVIS LINK</span><h1>选择你的使用方式</h1><p>在本机运行，或连接共享主机。</p></div><div class="appearance"><select id="palette" aria-label="配色"></select><button id="theme-toggle" class="theme-button" title="切换浅色与深色">深色</button></div></header>
+  <div class="choices">
+    <section><span class="tag">本机运行 · 离线可用</span><h2>轻量中文助手</h2><p>使用随包提供的 Qwen2.5 0.5B。模型在你的电脑上运行，适合中文短对话。</p><ul><li>CPU 即可，无需独立显卡</li><li>文字建议 4 GB 内存起，8 GB 更舒适</li><li>模型与运行环境已备齐，无需联网安装</li></ul><button id="local">使用本机模型开始聊天</button><small>解压即可使用，不需要安装 Python 或 Ollama。</small></section>
+    <section><span class="tag remote">连接主机</span><h2>共享模型服务</h2><p>由主机处理模型请求。填写服务地址和自己的邀请令牌即可聊天。</p><form id="remote-form"><label for="address">主机地址</label><input id="address" type="url" required placeholder="https://主机地址" autocomplete="url"><label for="token">邀请令牌</label><input id="token" type="password" required maxlength="256" placeholder="jf_…" autocomplete="off"><button id="remote">连接并开始聊天</button></form><small>令牌只用于本次连接，不保存。远程请使用 HTTPS。</small></section>
+  </div>
+  <section id="progress" hidden><div class="progress-heading"><span class="spinner"></span><strong id="status">正在准备…</strong></div><pre id="log" aria-live="polite"></pre></section>
+  <p id="error" role="alert" hidden></p>
+  <footer><span>JARVIS Link · 独立部署与连接</span><span>当前提供文字聊天 · 性能取决于所选方案</span></footer>
+</main></body></html>

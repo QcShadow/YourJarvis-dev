@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { LocalImagePreview } from '../components/LocalImagePreview';
 import { toast } from 'sonner';
 import { useAppStore } from '../lib/store';
 import {
@@ -699,7 +700,7 @@ function LaunchWizard({
         templateData: tpl,
         name: '',
         instruction: (tpl as any).instruction || TEMPLATE_INSTRUCTIONS[tpl.id] || '',
-        model: recommendedModel || w.model,
+        model: (tpl.model as string) || recommendedModel || w.model,
         scheduleType: (tpl as any).schedule_type || 'manual',
         scheduleValue: (tpl as any).schedule_value || '',
         selectedTools: (tpl as any).tools || [],
@@ -1902,7 +1903,7 @@ function InteractTab({ agentId, agentStatus, onRunStateChange }: { agentId: stri
                   Result
                 </div>
                 <div className="prose prose-sm prose-invert max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{findings}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ img: ({ src, alt }) => <LocalImagePreview src={src} alt={alt} /> }}>{findings}</ReactMarkdown>
                 </div>
               </div>
             ) : (

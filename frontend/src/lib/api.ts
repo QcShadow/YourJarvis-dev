@@ -9,10 +9,12 @@ import { serializeToolCallArguments } from './tool-call';
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
+    __JARVIS_DESKTOP__?: boolean;
   }
 }
 
 export const isTauri = () => typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+export const isNativeDesktop = () => typeof window !== 'undefined' && (!!window.__JARVIS_DESKTOP__ || isTauri());
 
 export type CloudKeyStatus = Record<string, boolean>;
 
@@ -119,6 +121,37 @@ export const apiFetch = (
   );
   return fetch(`${getBase()}${path}`, { ...init, headers });
 };
+
+export interface ModelRoute {
+  mode: 'chat' | 'tool' | 'deep';
+  model: string;
+  source: 'local';
+}
+
+export async function routeModel(prompt: string, fastModel: string, strongModel: string): Promise<ModelRoute> {
+  const response = await apiFetch('/v1/models/route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, fast_model: fastModel, strong_model: strongModel }),
+  });
+  if (!response.ok) throw new Error(`Model routing failed: ${response.status}`);
+  return response.json();
+}
+
+export interface ModelUsageStat {
+  model_id: string;
+  call_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export async function fetchModelUsage(): Promise<ModelUsageStat[]> {
+  const response = await apiFetch('/v1/telemetry/models');
+  if (!response.ok) throw new Error(`Model telemetry failed: ${response.status}`);
+  const data = await response.json();
+  return Array.isArray(data.models) ? data.models : [];
+}
 
 async function tauriInvoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -360,15 +393,17 @@ export interface SpeechHealth {
   available: boolean;
   backend?: string;
   reason?: string;
+  profiles?: Record<string, { model: string; language: string; available: boolean }>;
 }
 
-export async function transcribeAudio(audioBlob: Blob, filename = 'recording.webm'): Promise<TranscriptionResult> {
+export async function transcribeAudio(audioBlob: Blob, filename = 'recording.webm', language: 'zh' | 'en' = 'zh'): Promise<TranscriptionResult> {
   if (isTauri()) {
     try {
       const buffer = await audioBlob.arrayBuffer();
       return await tauriInvoke<TranscriptionResult>('transcribe_audio', {
         audioData: Array.from(new Uint8Array(buffer)),
         filename,
+        language,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -377,6 +412,7 @@ export async function transcribeAudio(audioBlob: Blob, filename = 'recording.web
   }
   const formData = new FormData();
   formData.append('file', audioBlob, filename);
+  formData.append('language', language);
   const res = await apiFetch(`/v1/speech/transcribe`, {
     method: 'POST',
     body: formData,
@@ -404,12 +440,13 @@ export interface TtsHealth {
 
 export async function synthesizeSpeech(
   text: string,
-  opts: { voiceId?: string; speed?: number; signal?: AbortSignal } = {},
+  opts: { voiceId?: string; speed?: number; voiceProfile?: string; outputLanguage?: string; characterId?: string; signal?: AbortSignal } = {},
 ): Promise<Blob> {
   const res = await apiFetch(`/v1/speech/synthesize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice_id: opts.voiceId, speed: opts.speed }),
+    body: JSON.stringify({ text, voice_id: opts.voiceId, speed: opts.speed,
+      voice_profile: opts.voiceProfile, output_language: opts.outputLanguage, character_id: opts.characterId }),
     signal: opts.signal,
   });
   if (!res.ok) {

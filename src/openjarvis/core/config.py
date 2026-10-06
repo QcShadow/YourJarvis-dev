@@ -369,6 +369,16 @@ class OllamaEngineConfig:
     """Per-engine config for Ollama."""
 
     host: str = ""
+    num_ctx: int = 0  # 0 = environment/default; lite preset uses 2048
+    num_gpu: int = -1  # -1 = automatic; 0 = CPU only
+
+
+@dataclass(slots=True)
+class APIEngineConfig:
+    """User-selected OpenAI-compatible local server or LLM API."""
+
+    host: str = ""
+    api_key_env: str = "JARVIS_LLM_API_KEY"
 
 
 @dataclass(slots=True)
@@ -479,6 +489,7 @@ class EngineConfig:
 
     default: str = "ollama"
     ollama: OllamaEngineConfig = field(default_factory=OllamaEngineConfig)
+    api: APIEngineConfig = field(default_factory=APIEngineConfig)
     vllm: VLLMEngineConfig = field(default_factory=VLLMEngineConfig)
     sglang: SGLangEngineConfig = field(default_factory=SGLangEngineConfig)
     llamacpp: LlamaCppEngineConfig = field(default_factory=LlamaCppEngineConfig)
@@ -1614,17 +1625,19 @@ class OperatorsConfig:
 class SpeechConfig:
     """Speech-to-text settings."""
 
-    backend: str = "auto"  # "auto", "faster-whisper", "openai", "deepgram"
+    backend: str = "auto"  # "auto", "language-routed", "faster-whisper", cloud
     model: str = "base"  # Whisper model size: tiny, base, small, medium, large-v3
     language: str = ""  # Empty = auto-detect
     device: str = "auto"  # "auto", "cpu", "cuda"
     compute_type: str = "float16"  # "float16", "int8", "float32"
+    chinese_model: str = ""  # SenseVoice directory; empty = local data root
+    english_model: str = "small.en"  # English-only Whisper model/path
     # Text-to-speech. ``voice_id`` is interpreted by ``tts_backend`` only --
     # voice IDs are not portable between backends, so if voice output falls
     # back to a different backend that backend's own default voice is used.
     # Kokoro IDs: bm_george / bm_lewis (British male), bf_emma / bf_isabella
     # (British female), af_* / am_* (American).
-    tts_backend: str = "kokoro"  # "kokoro", "openai_tts", "cartesia"
+    tts_backend: str = "kokoro"  # "kokoro", "piper", "jarvis", "openai_tts", "cartesia"
     voice_id: str = "bm_george"
     voice_speed: float = 1.0
 

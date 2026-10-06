@@ -18,7 +18,7 @@ from openjarvis.core.events import EventBus, EventType
 from openjarvis.core.types import Conversation, Message, Role, ToolResult
 from openjarvis.engine._stubs import InferenceEngine
 
-_ALLOWED_ENGINE_OPTION_KEYS = frozenset({"num_ctx", "num_gpu"})
+_ALLOWED_ENGINE_OPTION_KEYS = frozenset({"num_ctx", "num_gpu", "num_thread", "think", "keep_alive"})
 
 
 @dataclass(slots=True)

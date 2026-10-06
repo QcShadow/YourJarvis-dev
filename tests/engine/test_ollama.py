@@ -16,7 +16,7 @@ except ImportError:  # respx is an optional test-only dep; the async MockTranspo
     _HAS_RESPX = False
 
 from openjarvis.core.registry import EngineRegistry
-from openjarvis.core.types import Message, Role
+from openjarvis.core.types import Message, Role, ToolCall
 from openjarvis.engine._base import EngineConnectionError
 from openjarvis.engine.ollama import OllamaEngine, _is_control_token_only_args
 
@@ -26,6 +26,39 @@ from openjarvis.engine.ollama import OllamaEngine, _is_control_token_only_args
 requires_respx = pytest.mark.skipif(
     not _HAS_RESPX, reason="respx not installed (optional test-only dependency)"
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("separate_chunks", [True, False])
+async def test_complete_tool_calls_have_unique_indices_across_entire_response(
+    separate_chunks,
+):
+    calls = [
+        {"function": {"name": "system_time", "arguments": {}}},
+        {"function": {"name": "calculator", "arguments": {"expression": "1+1"}}},
+    ]
+    batches = [[call] for call in calls] if separate_chunks else [calls]
+    lines = [json.dumps({"message": {"tool_calls": batch}}) for batch in batches]
+    lines.append(json.dumps({"done": True, "done_reason": "stop"}))
+    engine = OllamaEngine(host="http://testhost:11434")
+    engine._async_transport = _ndjson_transport(lines)
+    try:
+        chunks = [
+            chunk
+            async for chunk in engine.stream_full(
+                [Message(role=Role.USER, content="Use both tools")],
+                model="test",
+            )
+        ]
+        fragments = [call for chunk in chunks for call in (chunk.tool_calls or [])]
+        assert [call["index"] for call in fragments] == [0, 1]
+        assert [call["function"]["name"] for call in fragments] == [
+            "system_time",
+            "calculator",
+        ]
+        assert len({call["id"] for call in fragments}) == 2
+    finally:
+        engine.close()
 
 
 @pytest.fixture()
@@ -313,6 +346,42 @@ class TestOllamaStreamIsAsyncAndBounded:
     error. Uses httpx.MockTransport directly, so it runs without respx."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("rich", [False, True])
+    async def test_history_tool_arguments_are_objects_on_both_stream_paths(self, rich):
+        captured = []
+        args = '{"query":"武汉黄鹤楼"}'
+        messages = [
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="prior", name="web_search", arguments=args)],
+            ),
+            Message(
+                role=Role.TOOL,
+                content="Retrieved detail",
+                name="web_search",
+                tool_call_id="prior",
+            ),
+            Message(role=Role.USER, content="具体说说"),
+        ]
+
+        def handler(request):
+            captured.append(json.loads(request.content))
+            return httpx.Response(
+                200, text='{"message":{"content":"Details"},"done":true}\n'
+            )
+
+        engine = OllamaEngine(host="http://localhost:11434")
+        engine._async_transport = httpx.MockTransport(handler)
+        stream = engine.stream_full if rich else engine.stream
+        chunks = [chunk async for chunk in stream(messages, model="test")]
+        assert chunks
+        assert captured[0]["messages"][0]["tool_calls"][0]["function"]["arguments"] == {
+            "query": "武汉黄鹤楼"
+        }
+        assert messages[0].tool_calls[0].arguments == args  # Caller state preserved.
+
+    @pytest.mark.asyncio
     async def test_stream_does_not_use_blocking_sync_client(self) -> None:
         # PIN: the old code iterated ``self._client`` (a SYNC httpx.Client) via
         # ``iter_lines`` inside this ``async def``. The async path must not touch the
@@ -424,6 +493,33 @@ class TestOllamaStreamHttpErrorMapping:
             return httpx.Response(status, text=text, headers=headers or {})
 
         return httpx.MockTransport(handler)
+
+    @pytest.mark.asyncio
+    async def test_required_tools_do_not_silently_retry_as_plain_chat(self):
+        calls = []
+
+        def handler(request):
+            calls.append(json.loads(request.content))
+            return httpx.Response(400, text="selected model does not support tools")
+
+        engine = OllamaEngine(host="http://testhost:11434")
+        engine._async_transport = httpx.MockTransport(handler)
+        try:
+            with pytest.raises(EngineConnectionError, match="does not support tools"):
+                _ = [
+                    chunk
+                    async for chunk in engine.stream_full(
+                        [Message(role=Role.USER, content="Execute work")],
+                        model="test",
+                        tools=[
+                            {"type": "function", "function": {"name": "calculator"}}
+                        ],
+                        require_tools=True,
+                    )
+                ]
+            assert len(calls) == 1 and "tools" in calls[0]
+        finally:
+            engine.close()
 
     @pytest.mark.asyncio
     async def test_stream_500_maps_to_connection_error(self) -> None:

@@ -3,7 +3,7 @@ import { Send, Square, Paperclip, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId } from '../../lib/store';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { fetchSavings, getBase } from '../../lib/api';
+import { fetchSavings, getBase, routeModel } from '../../lib/api';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { serializeToolCallArguments } from '../../lib/tool-call';
 import {
@@ -11,7 +11,12 @@ import {
   resolveChatEngine,
 } from '../../lib/chat-telemetry';
 import { MicButton } from './MicButton';
+import { VoiceActivity } from './VoiceActivity';
 import { useSpeech } from '../../hooks/useSpeech';
+import { useTtsStore } from '../../lib/tts';
+import { useVoiceActivity } from '../../lib/voice-activity';
+import { speechDetailSwitch } from '../../lib/message-text';
+import { buildConversationHistory, inheritedRetrievalSources } from '../../lib/conversation-history';
 import type {
   ChatMessage,
   MessageTelemetry,
@@ -81,6 +86,7 @@ function useResearchCorpusSync(enabled: boolean): {
 
 export function InputArea() {
   const [input, setInput] = useState('');
+  const [routedModel, setRoutedModel] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -91,6 +97,12 @@ export function InputArea() {
   const messages = useAppStore((s) => s.messages);
   const speechEnabled = useAppStore((s) => s.settings.speechEnabled);
   const maxTokens = useAppStore((s) => s.settings.maxTokens);
+  const automaticModelRouting = useAppStore((s) => s.settings.automaticModelRouting);
+  const wakeWordEnabled = useAppStore((s) => s.settings.wakeWordEnabled);
+  const interfaceLanguage = useAppStore((s) => s.settings.interfaceLanguage);
+  const voiceForeground = useVoiceActivity((s) => s.foreground);
+  const pendingVoiceCommand = useAppStore((s) => s.pendingVoiceCommand);
+  const clearVoiceCommand = useAppStore((s) => s.clearVoiceCommand);
   const temperature = useAppStore((s) => s.settings.temperature);
   const createConversation = useAppStore((s) => s.createConversation);
   const addMessage = useAppStore((s) => s.addMessage);
@@ -127,9 +139,10 @@ export function InputArea() {
     prevModelRef.current = selectedModel;
   }, [selectedModel, streamState.isStreaming, resetStream]);
 
-  const micDisabled = !speechEnabled || !speechAvailable || streamState.isStreaming;
-  const micReason: 'not-enabled' | 'no-backend' | 'streaming' | undefined =
-    !speechEnabled ? 'not-enabled'
+  const micDisabled = wakeWordEnabled || !speechEnabled || !speechAvailable || streamState.isStreaming;
+  const micReason: 'not-enabled' | 'no-backend' | 'streaming' | 'wake-mode' | undefined =
+    wakeWordEnabled ? 'wake-mode'
+    : !speechEnabled ? 'not-enabled'
     : !speechAvailable ? 'no-backend'
     : streamState.isStreaming ? 'streaming'
     : undefined;
@@ -164,6 +177,9 @@ export function InputArea() {
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();
+    useTtsStore.getState().stop();
+    const reply = [...useAppStore.getState().messages].reverse().find((m) => m.role === 'assistant');
+    if (reply) useTtsStore.getState().markAutoSpoken(reply.id);
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -171,13 +187,20 @@ export function InputArea() {
     resetStream();
   }, [resetStream]);
 
-  const sendMessage = useCallback(async () => {
-    const content = input.trim();
+  useEffect(() => {
+    window.addEventListener('jarvis-interrupt-response', stopStreaming);
+    return () => window.removeEventListener('jarvis-interrupt-response', stopStreaming);
+  }, [stopStreaming]);
+
+  const sendMessage = useCallback(async (contentOverride?: string) => {
+    const content = (contentOverride ?? input).trim();
     if (!content || streamState.isStreaming) return;
     if (!selectedModel) {
       toast.error('Pick a model first (⌘K)');
       return;
     }
+    const detail = speechDetailSwitch(content);
+    if (detail) useVoiceActivity.getState().update({ speechDetail: detail });
 
     setInput('');
 
@@ -196,10 +219,7 @@ export function InputArea() {
 
     // Build API messages before adding assistant placeholder
     const currentMessages = useAppStore.getState().messages;
-    const apiMessages = currentMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const apiMessages = buildConversationHistory(currentMessages);
 
     const assistantMsg: ChatMessage = {
       id: generateId(),
@@ -207,6 +227,7 @@ export function InputArea() {
       content: '',
       timestamp: Date.now(),
       isResearch: deepResearch || undefined,
+      sourceContext: deepResearch ? undefined : inheritedRetrievalSources(currentMessages),
     };
     addMessage(convId, assistantMsg);
 
@@ -224,6 +245,7 @@ export function InputArea() {
     let usage: TokenUsage | undefined;
     let complexity: { score: number; tier: string; suggested_max_tokens: number } | undefined;
     let routedEngine: string | undefined;
+    let resolvedModel = selectedModel;
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -250,6 +272,28 @@ export function InputArea() {
     });
 
     try {
+      let chatMode: 'chat' | 'tool' | 'deep' = 'tool';
+      if (!deepResearch) {
+        const installed = useAppStore.getState().models.map((model) => model.id);
+        const fast = installed.find((id) => id.startsWith('qwen3.5:9b')) ?? selectedModel;
+        const strong = installed.find((id) => id.startsWith('deepseek-r1:14b')) ?? fast;
+        if (automaticModelRouting) {
+          setStreamState({ phase: 'Choosing model...' });
+          try {
+            const route = await routeModel(content, fast, strong);
+            if (installed.includes(route.model)) resolvedModel = route.model;
+            chatMode = route.mode;
+          } catch {
+            chatMode = 'tool'; // A routing failure must not silently disable real tools.
+          }
+        } else {
+          chatMode = 'tool';
+        }
+      }
+      if (!deepResearch && useVoiceActivity.getState().speechDetail === 'full'
+        && apiMessages.some((m) => m.role === 'tool' && m.name === 'web_search')) chatMode = 'tool';
+      setRoutedModel(resolvedModel);
+      setStreamState({ phase: chatMode === 'tool' ? 'Working...' : 'Generating...' });
       if (deepResearch) {
         for await (const ev of streamResearch(
           content,
@@ -376,7 +420,8 @@ export function InputArea() {
         }
       } else {
       for await (const sseEvent of streamChat(
-        { model: selectedModel, messages: apiMessages, stream: true, temperature, max_tokens: maxTokens },
+        { model: resolvedModel, messages: apiMessages, stream: true, stream_mode: chatMode === 'tool' ? 'agent' : 'direct', temperature, max_tokens: maxTokens,
+          num_ctx: apiMessages.some((m) => m.role === 'tool') || chatMode === 'tool' ? 8192 : 4096 },
         controller.signal,
       )) {
         const eventName = sseEvent.event;
@@ -387,7 +432,7 @@ export function InputArea() {
           setStreamState({ phase: 'Generating...' });
           useAppStore.getState().addLogEntry({
             timestamp: Date.now(), level: 'info', category: 'chat',
-            message: `Generating with ${selectedModel}...`,
+            message: `Generating with ${resolvedModel}...`,
           });
         } else if (eventName === 'tool_call_start') {
           try {
@@ -419,6 +464,7 @@ export function InputArea() {
               tc.status = data.success ? 'success' : 'error';
               tc.latency = data.latency;
               tc.result = data.result;
+              tc.metadata = data.metadata;
             }
             setStreamState({
               phase: 'Generating...',
@@ -431,6 +477,7 @@ export function InputArea() {
             const data = JSON.parse(sseEvent.data);
             const delta = data.choices?.[0]?.delta;
             if (data.usage) usage = data.usage;
+            if (typeof data.final_content === 'string') accumulatedContent = data.final_content;
             if (data.complexity) complexity = data.complexity;
             routedEngine = engineFromCompletionChunk(data) ?? routedEngine;
             if (delta?.content) {
@@ -475,16 +522,17 @@ export function InputArea() {
       }
       const totalMs = Date.now() - startTime;
       const appState = useAppStore.getState();
-      const selectedOwner = appState.models.find((m) => m.id === selectedModel)?.owned_by;
+      const actualModel = resolvedModel;
+      const selectedOwner = appState.models.find((m) => m.id === actualModel)?.owned_by;
       const engineLabel = resolveChatEngine({
         routedEngine,
         serverEngine: appState.serverInfo?.engine,
-        selectedModel,
+        selectedModel: actualModel,
         selectedOwner,
       });
       const telemetry: MessageTelemetry = {
         engine: engineLabel,
-        model_id: selectedModel,
+        model_id: actualModel,
         total_ms: totalMs,
         ttft_ms: ttftMs,
         tokens_per_sec: usage?.completion_tokens
@@ -552,7 +600,14 @@ export function InputArea() {
     deepResearch,
     temperature,
     maxTokens,
+    automaticModelRouting,
   ]);
+
+  useEffect(() => {
+    if (!pendingVoiceCommand || streamState.isStreaming || !selectedModel) return;
+    clearVoiceCommand(pendingVoiceCommand.id);
+    void sendMessage(pendingVoiceCommand.text);
+  }, [pendingVoiceCommand, streamState.isStreaming, selectedModel, clearVoiceCommand, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -563,6 +618,10 @@ export function InputArea() {
 
   return (
     <div className="px-4 pb-4 pt-2" style={{ maxWidth: 'var(--chat-max-width)', margin: '0 auto', width: '100%' }}>
+      <VoiceActivity />
+      {streamState.isStreaming && routedModel && <div className="text-[11px] mb-1" style={{ color: 'var(--color-text-tertiary)' }}>
+        {interfaceLanguage === 'zh-CN' ? '本轮模型' : 'This turn'}: {routedModel}
+      </div>}
       <div className="mb-2 flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <button
@@ -596,7 +655,10 @@ export function InputArea() {
         )}
       </div>
       <div
-        className="flex items-center gap-2 rounded-2xl px-4 py-3 transition-shadow"
+        className="jarvis-text-composer flex items-center gap-2 rounded-2xl px-4 py-3 transition-shadow"
+        data-collapsed={speechEnabled && wakeWordEnabled && voiceForeground}
+        inert={speechEnabled && wakeWordEnabled && voiceForeground}
+        aria-hidden={speechEnabled && wakeWordEnabled && voiceForeground}
         style={{
           background: 'var(--color-input-bg)',
           border: '1px solid var(--color-input-border)',
@@ -608,7 +670,9 @@ export function InputArea() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={selectedModel ? 'Message OpenJarvis...' : 'Pick a model first (⌘K)...'}
+          placeholder={selectedModel
+            ? interfaceLanguage === 'zh-CN' ? '给贾维斯发送消息…' : 'Message Jarvis…'
+            : interfaceLanguage === 'zh-CN' ? '请先选择模型…' : 'Choose a model first…'}
           rows={1}
           className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
@@ -632,7 +696,7 @@ export function InputArea() {
               reason={micReason}
             />
             <button
-              onClick={sendMessage}
+            onClick={() => void sendMessage()}
               disabled={streamState.isStreaming || !input.trim() || modelLoading || !selectedModel}
               title={selectedModel ? 'Send message' : 'Pick a model first (⌘K)'}
               className="p-2 rounded-xl transition-colors shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-default"

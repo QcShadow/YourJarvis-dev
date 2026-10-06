@@ -13,7 +13,9 @@ female (prefix ``z`` → ``lang_code="z"``).
 
 from __future__ import annotations
 
+import inspect
 import io
+import re
 import threading
 from collections import OrderedDict
 from typing import Any, Dict, List
@@ -38,6 +40,20 @@ _VOICE_PREFIX_TO_LANG: Dict[str, str] = {
 
 _DEFAULT_LANG_CODE = "a"
 _DEFAULT_VOICE_ID = "af_heart"
+_DEFAULT_REPO_ID = "hexgrad/Kokoro-82M"
+
+
+def _repo_kwargs(constructor: Any) -> Dict[str, str]:
+    """Pass ``repo_id`` when the installed Kokoro API declares it.
+
+    The explicit signature check keeps lightweight test doubles and older
+    Kokoro releases compatible while silencing the current release's warning.
+    """
+    try:
+        parameters = inspect.signature(constructor).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {"repo_id": _DEFAULT_REPO_ID} if "repo_id" in parameters else {}
 
 
 @TTSRegistry.register("kokoro")
@@ -92,9 +108,22 @@ class KokoroTTSBackend(TTSBackend):
                     "kokoro package not installed. Install with: pip install kokoro"
                 ) from exc
             try:
+                if lang_code == "z":
+                    # jieba logs dictionary-cache details at INFO on every new
+                    # process; keep the interactive voice UI focused on the
+                    # conversation instead of dependency startup noise.
+                    import logging as _logging
+
+                    import jieba
+
+                    jieba.setLogLevel(_logging.ERROR)
                 # KModel is language-blind and is by far the heaviest part of
                 # Kokoro. Reuse one model across every language pipeline.
-                pipeline = KPipeline(lang_code=lang_code, model=self._ensure_model())
+                pipeline = KPipeline(
+                    lang_code=lang_code,
+                    model=self._ensure_model(),
+                    **_repo_kwargs(KPipeline),
+                )
             except ImportError as exc:
                 # Kokoro loads language-specific G2P resources at init time and
                 # several languages need extra dependencies that aren't pulled in
@@ -154,7 +183,9 @@ class KokoroTTSBackend(TTSBackend):
 
         model_kwargs = {"model": self._model_path} if self._model_path else {}
         try:
-            self._model = KModel(**model_kwargs).to(device).eval()
+            self._model = (
+                KModel(**_repo_kwargs(KModel), **model_kwargs).to(device).eval()
+            )
         except RuntimeError as exc:
             raise RuntimeError(
                 f"Failed to initialize Kokoro on device {device!r}: {exc}"
@@ -192,6 +223,10 @@ class KokoroTTSBackend(TTSBackend):
         import soundfile as sf
 
         lang_code = self._lang_for_voice(voice_id)
+        # Keep the written brand as JARVIS, but pronounce it naturally when
+        # the selected voice is Mandarin instead of spelling each letter.
+        if lang_code == "z":
+            text = re.sub(r"\bJARVIS\b", "贾维斯", text, flags=re.IGNORECASE)
         with self._pipeline_lock:
             pipeline = self._ensure_pipeline(lang_code)
             samples = []
@@ -255,8 +290,13 @@ class KokoroTTSBackend(TTSBackend):
         ]
 
     def health(self) -> bool:
+        # A health probe must not construct the hard-coded English pipeline:
+        # doing so downloads a spaCy model even when the configured voice is
+        # Mandarin and its local G2P dependencies are already available.
+        # Load only the shared acoustic model here; language-specific setup is
+        # validated by synthesize() for the requested voice.
         try:
-            self._ensure_pipeline(_DEFAULT_LANG_CODE)
+            self._ensure_model()
             return True
-        except RuntimeError:
+        except Exception:
             return False

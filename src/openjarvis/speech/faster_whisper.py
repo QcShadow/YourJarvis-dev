@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from openjarvis.core.registry import SpeechRegistry
 from openjarvis.speech._stubs import Segment, SpeechBackend, TranscriptionResult
+from openjarvis.speech.text import normalize_transcript
 
 try:
     from faster_whisper import WhisperModel
@@ -119,6 +120,9 @@ class FasterWhisperBackend(SpeechBackend):
                 kwargs = {}
                 if language:
                     kwargs["language"] = language
+                if language == "zh":
+                    kwargs["initial_prompt"] = "简体中文。贾维斯，Jarvis。"
+                kwargs["condition_on_previous_text"] = False
 
                 segments_iter, info = model.transcribe(tmp.name, **kwargs)
                 segments_list = list(segments_iter)
@@ -136,10 +140,13 @@ class FasterWhisperBackend(SpeechBackend):
             raise
 
         # Build result
-        text = "".join(seg.text for seg in segments_list).strip()
+        writing_language = language or getattr(info, "language", None)
+        text = normalize_transcript(
+            "".join(seg.text for seg in segments_list).strip(), writing_language
+        )
         segments = [
             Segment(
-                text=seg.text.strip(),
+                text=normalize_transcript(seg.text.strip(), writing_language),
                 start=seg.start,
                 end=seg.end,
                 confidence=None,

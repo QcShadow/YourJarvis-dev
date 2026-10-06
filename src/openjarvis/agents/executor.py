@@ -350,9 +350,28 @@ class AgentExecutor:
 
         previous = getattr(self._toolkit_local, "current", None)
         self._toolkit_local.current = None
+        task_id = None
+        writer_lock = None
+        if str(agent.get("config", {}).get("model", "")).startswith("jarvis-writer:"):
+            from openjarvis.core.model_scheduler import WRITER_LOCK, begin_task, update_task
+            task_id = begin_task("writer", agent["config"]["model"], agent.get("name", "写作任务"))
+            writer_lock = WRITER_LOCK
+            writer_lock.acquire()
+            update_task(task_id, status="running", started_at=time.time())
         try:
-            return self._invoke_agent_impl(agent)
+            result = self._invoke_agent_impl(agent)
+            if task_id:
+                from openjarvis.core.model_scheduler import finish_task
+                finish_task(task_id)
+            return result
+        except Exception as exc:
+            if task_id:
+                from openjarvis.core.model_scheduler import finish_task
+                finish_task(task_id, exc)
+            raise
         finally:
+            if writer_lock is not None:
+                writer_lock.release()
             current = getattr(self._toolkit_local, "current", None)
             if current is not None:
                 current.close()
@@ -491,6 +510,9 @@ class AgentExecutor:
 
         # Construct agent instance
         agent_kwargs: dict[str, Any] = {}
+        for key in ("temperature", "max_tokens"):
+            if key in config:
+                agent_kwargs[key] = config[key]
         sys_prompt = config.get("system_prompt")
         if getattr(execution_agent_cls, "accepts_tools", False) and tool_instances:
             agent_kwargs["tools"] = tool_instances
@@ -605,6 +627,26 @@ class AgentExecutor:
 
         if resolved_toolkit.mcp_clients:
             agent_instance._mcp_clients = resolved_toolkit.mcp_clients
+
+        # Re-apply runtime security after constructor fallbacks and inject the
+        from openjarvis.agents._stubs import _ALLOWED_ENGINE_OPTION_KEYS
+
+        if hasattr(agent_instance, "_engine_options"):
+            agent_instance._engine_options.update({
+                key: config[key] for key in _ALLOWED_ENGINE_OPTION_KEYS if key in config
+            })
+            if model.startswith("jarvis-writer:"):
+                from openjarvis.core.model_scheduler import settings as scheduler_settings
+                agent_instance._engine_options.update(num_gpu=0, keep_alive=scheduler_settings()["writer_idle_seconds"])
+        if config.get("persona_mode") == "independent":
+            from openjarvis.core.config import MemoryFilesConfig, SystemPromptConfig
+            from openjarvis.prompt.builder import SystemPromptBuilder
+
+            agent_instance._prompt_builder = SystemPromptBuilder(
+                agent_template=sys_prompt or "",
+                memory_files_config=MemoryFilesConfig(persona_name="none"),
+                system_prompt_config=SystemPromptConfig(),
+            )
 
         # Re-apply runtime security after constructor fallbacks and inject the
         # managed UUID into both direct-operation agents and ToolExecutors.

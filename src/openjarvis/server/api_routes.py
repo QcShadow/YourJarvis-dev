@@ -38,6 +38,9 @@ class SpeechSynthesizeRequest(BaseModel):
     text: str
     voice_id: Optional[str] = None
     speed: Optional[float] = None
+    voice_profile: Optional[str] = None
+    output_language: Optional[str] = None
+    character_id: str = "jarvis-local"
 
 
 class MemoryStoreRequest(BaseModel):
@@ -477,6 +480,23 @@ def _telemetry_db_path(request: Request) -> Path:
     from openjarvis.core.paths import get_config_dir
 
     return get_config_dir() / "telemetry.db"
+
+
+@telemetry_router.get("/models")
+async def telemetry_models(request: Request):
+    """Per-model local usage across GUI, CLI and agent requests."""
+    from dataclasses import asdict
+
+    from openjarvis.telemetry.aggregator import TelemetryAggregator
+
+    db_path = _telemetry_db_path(request)
+    if not db_path.exists():
+        return {"models": []}
+    agg = TelemetryAggregator(db_path)
+    try:
+        return {"models": [asdict(row) for row in agg.per_model_stats()]}
+    finally:
+        agg.close()
 
 
 @telemetry_router.get("/stats")
@@ -1003,7 +1023,12 @@ async def transcribe_speech(request: Request):
         raise HTTPException(status_code=400, detail="Missing 'file' field")
 
     audio_bytes = await audio_file.read()
-    language = form.get("language")
+    config = getattr(request.app.state, "config", None)
+    language = (
+        form.get("language")
+        or getattr(getattr(config, "speech", None), "language", "zh")
+        or "zh"
+    )
 
     # Detect format from filename
     filename = getattr(audio_file, "filename", "audio.wav")
@@ -1023,8 +1048,10 @@ async def transcribe_speech(request: Request):
             detail=f"Speech transcription failed: {exc}",
         ) from exc
 
+    from openjarvis.speech.text import normalize_transcript
+
     return {
-        "text": result.text,
+        "text": normalize_transcript(result.text, language),
         "language": result.language,
         "confidence": result.confidence,
         "duration_seconds": result.duration_seconds,
@@ -1038,7 +1065,7 @@ async def speech_health(request: Request):
     if backend is None:
         return {"available": False, "reason": "No speech backend configured"}
     try:
-        available = backend.health()
+        available = await asyncio.to_thread(backend.health)
         reason = None
     except Exception as exc:
         logger.exception("Speech health check failed")
@@ -1053,6 +1080,11 @@ async def speech_health(request: Request):
     return {
         "available": available,
         "backend": backend.backend_id,
+        **(
+            {"profiles": backend.profiles()}
+            if callable(getattr(type(backend), "profiles", None))
+            else {}
+        ),
         **({"reason": reason} if reason else {}),
     }
 
@@ -1140,7 +1172,22 @@ async def synthesize_speech(request: Request, body: SpeechSynthesizeRequest):
             detail=f"Text exceeds {_MAX_TTS_CHARS} characters",
         )
 
-    backend = await _resolve_tts_backend(request)
+    profile = None
+    if body.voice_profile:
+        from openjarvis.speech.profiles import profile_backend, resolve_profile
+
+        try:
+            profile = resolve_profile(
+                body.voice_profile, body.output_language or "zh", body.character_id
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            backend = await profile_backend(request.app, profile)
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    else:
+        backend = await _resolve_tts_backend(request)
     if backend is None:
         raise HTTPException(
             status_code=501, detail="No text-to-speech backend available"
@@ -1149,12 +1196,21 @@ async def synthesize_speech(request: Request, body: SpeechSynthesizeRequest):
     voice_id, speed = _tts_voice_and_speed(request, backend)
     if body.voice_id:
         voice_id = body.voice_id
+    if profile:
+        voice_id = profile["voice_id"]
     if body.speed is not None:
         speed = body.speed
 
     try:
+        synthesize = backend.synthesize
+        if profile:
+            from functools import partial
+
+            from openjarvis.speech.profiles import synthesize_profile
+
+            synthesize = partial(synthesize_profile, backend, profile)
         result = await asyncio.to_thread(
-            backend.synthesize,
+            synthesize,
             text,
             voice_id=voice_id,
             speed=speed,
@@ -1170,6 +1226,94 @@ async def synthesize_speech(request: Request, body: SpeechSynthesizeRequest):
         headers={
             "X-Voice-Id": result.voice_id or voice_id,
             "X-Sample-Rate": str(result.sample_rate),
+            "X-Voice-Profile": body.voice_profile or "legacy",
+        },
+    )
+
+
+@speech_router.post("/stream")
+async def stream_speech(request: Request, body: SpeechSynthesizeRequest):
+    """Start playing signed 16-bit PCM before the utterance finishes generating."""
+    from fastapi.responses import StreamingResponse
+
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "Missing 'text'")
+    if len(text) > _MAX_TTS_CHARS:
+        raise HTTPException(413, "Speech text is too long")
+    profile = None
+    if body.voice_profile:
+        from openjarvis.speech.profiles import profile_backend, resolve_profile
+
+        try:
+            profile = resolve_profile(
+                body.voice_profile, body.output_language or "zh", body.character_id
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if profile["backend"] != "jarvis":
+            raise HTTPException(501, "This voice uses the WAV endpoint")
+        try:
+            backend = await profile_backend(request.app, profile)
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    else:
+        backend = await _resolve_tts_backend(request)
+    if (
+        backend is None
+        or not hasattr(backend, "supports_streaming")
+        or not await asyncio.to_thread(backend.supports_streaming)
+    ):
+        raise HTTPException(501, "The active voice does not support streaming")
+    voice_id, speed = _tts_voice_and_speed(request, backend)
+    voice_id = profile["voice_id"] if profile else (body.voice_id or voice_id)
+    speed = body.speed if body.speed is not None else speed
+
+    def chunks():
+        iterator = backend.synthesize_stream(
+            text, voice_id=voice_id, speed=speed, output_format="wav"
+        )
+        try:
+            if profile:
+                with backend._voice_profile_lock:
+                    yield from iterator
+            else:
+                yield from iterator
+        finally:
+            iterator.close()
+
+    iterator = chunks()
+    first_task = asyncio.create_task(asyncio.to_thread(next, iterator, None))
+    try:
+        first = await asyncio.shield(first_task)
+    except asyncio.CancelledError:
+        first_task.add_done_callback(lambda _task: iterator.close())
+        raise
+    except ValueError as exc:
+        iterator.close()
+        raise HTTPException(422, str(exc)) from exc
+    if first is None:
+        raise HTTPException(502, "The voice returned no audio")
+    rate = first[1]
+
+    def pcm():
+        try:
+            yield first[0]
+            for data, chunk_rate in iterator:
+                if chunk_rate != rate:
+                    raise RuntimeError("Speech sample rate changed during streaming")
+                yield data
+        finally:
+            iterator.close()
+
+    return StreamingResponse(
+        pcm(),
+        media_type="audio/pcm",
+        headers={
+            "X-Sample-Rate": str(rate),
+            "X-Voice-Id": voice_id,
+            "X-Voice-Profile": body.voice_profile or "legacy",
+            "Cache-Control": "no-store",
         },
     )
 
@@ -1188,6 +1332,13 @@ async def tts_health(request: Request):
         "voice_id": voice_id,
         "speed": speed,
     }
+
+
+@speech_router.get("/profiles")
+async def speech_profiles():
+    from openjarvis.speech.profiles import catalog
+
+    return catalog()
 
 
 # ---- Feedback routes ----
@@ -1306,6 +1457,17 @@ def include_all_routes(app) -> None:
     app.include_router(websocket_router)
     app.include_router(learning_router)
     app.include_router(speech_router)
+    from openjarvis.server.voice_routes import router as voice_router
+
+    app.include_router(voice_router)
+    from openjarvis.server.deployment_routes import router as deployment_router
+
+    app.include_router(deployment_router)
+    from openjarvis.server.local_image_routes import router as local_image_router
+    from openjarvis.server.model_scheduler_routes import router as model_scheduler_router
+
+    app.include_router(local_image_router)
+    app.include_router(model_scheduler_router)
     app.include_router(feedback_router)
     app.include_router(optimize_router)
 

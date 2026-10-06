@@ -14,6 +14,11 @@
   </p>
 </div>
 
+> **YourJarvis development repository.** This private fork contains the
+> personalized Windows desktop, voice, sharing, model-routing and deployment
+> work used by QcShadow. Public friend builds are published separately at
+> [YourJarvis-link](https://github.com/QcShadow/YourJarvis-link/releases).
+
 ---
 
 <div align="center">

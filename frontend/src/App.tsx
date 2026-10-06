@@ -6,16 +6,22 @@ import { DashboardPage } from './pages/DashboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { GetStartedPage } from './pages/GetStartedPage';
 import { AgentsPage } from './pages/AgentsPage';
+import { ModelSchedulerPage } from './pages/ModelSchedulerPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
 import { useAppStore } from './lib/store';
-import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } from './lib/api';
+import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri, isNativeDesktop } from './lib/api';
 import { OptInModal } from './components/OptInModal';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { track, hashId } from './lib/analytics';
+import { useInterfaceLanguage } from './lib/i18n';
+import { WakeListener } from './components/WakeListener';
+import { BackgroundVoiceListener } from './components/BackgroundVoiceListener';
+import { useTtsStore } from './lib/tts';
+import { applyPalette } from './lib/palettes';
 
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
@@ -35,6 +41,9 @@ export default function App() {
   const setServerInfo = useAppStore((s) => s.setServerInfo);
   const setSavings = useAppStore((s) => s.setSavings);
   const settings = useAppStore((s) => s.settings);
+  useInterfaceLanguage(settings.interfaceLanguage);
+  useEffect(() => { useTtsStore.getState().stop(); }, [settings.characterId,
+    settings.outputLanguage, settings.recognitionLanguage, settings.voiceProfileZh, settings.voiceProfileEn]);
   const commandPaletteOpen = useAppStore((s) => s.commandPaletteOpen);
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen);
   const optInEnabled = useAppStore((s) => s.optInEnabled);
@@ -50,10 +59,17 @@ export default function App() {
   // Apply theme class to <html>
   useEffect(() => {
     const root = document.documentElement;
-    root.classList.remove('dark', 'light');
-    if (settings.theme === 'dark') root.classList.add('dark');
-    else if (settings.theme === 'light') root.classList.add('light');
-  }, [settings.theme]);
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const dark = settings.theme === 'dark' || (settings.theme === 'system' && media.matches);
+      root.classList.toggle('dark', dark);
+      root.classList.toggle('light', !dark);
+      applyPalette(root, settings.colorScheme, dark);
+      root.style.fontSize = settings.fontSize === 'large' ? '18px' : settings.fontSize === 'small' ? '14px' : '16px';
+    };
+    apply(); media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, [settings.theme, settings.colorScheme, settings.fontSize]);
 
   // Sync overlay conversations into the main app
   const importOverlay = useAppStore((s) => s.importOverlayConversation);
@@ -117,10 +133,10 @@ export default function App() {
     return () => clearInterval(interval);
   }, [optInEnabled, optInDisplayName, optInAnonId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show opt-in modal on first visit
+  // Keep the personal local assistant focused on setup. Sharing remains an
+  // explicit action in the System panel, never a first-visit interruption.
   useEffect(() => {
     if (!optInModalSeen) {
-      setOptInModalOpen(true);
       markOptInModalSeen();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -181,6 +197,7 @@ export default function App() {
   return (
     <>
       <UpdateChecker />
+      {isNativeDesktop() ? <BackgroundVoiceListener /> : <WakeListener />}
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<ChatPage />} />
@@ -189,6 +206,7 @@ export default function App() {
           <Route path="get-started" element={<GetStartedPage />} />
           <Route path="data-sources" element={<DataSourcesPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="model-scheduler" element={<ModelSchedulerPage />} />
           <Route path="logs" element={<LogsPage />} />
         </Route>
       </Routes>

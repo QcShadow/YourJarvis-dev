@@ -22,6 +22,10 @@ def _isolate_traces_db(tmp_path, monkeypatch):
     """
     from openjarvis.core import config as _config
 
+    # Voice consent is per-test, so no test restores a real user's microphone
+    # or leaks a /stop preference into a different test's startup.
+    monkeypatch.setenv("OPENJARVIS_VOICE_STATE_PATH", str(tmp_path / "voice.json"))
+
     real_load_config = _config.load_config
     db_path = str(tmp_path / "traces.db")
 

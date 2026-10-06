@@ -221,6 +221,10 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     except json.JSONDecodeError:
                         continue
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    if chunk.get("error"):
+                        raise EngineConnectionError(
+                            f"{self.engine_id} inference stream failed"
+                        )
                     content = delta.get("content")
                     if content:
                         yield content
@@ -278,6 +282,10 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     except json.JSONDecodeError:
                         continue
                     choice = chunk.get("choices", [{}])[0]
+                    if chunk.get("error"):
+                        raise EngineConnectionError(
+                            f"{self.engine_id} inference stream failed"
+                        )
                     delta = choice.get("delta", {})
                     finish = choice.get("finish_reason")
                     content = delta.get("content")

@@ -39,7 +39,13 @@ class FileReadTool(BaseTool):
                     },
                     "max_lines": {
                         "type": "integer",
-                        "description": ("Max lines to return (default: all)."),
+                        "description": ("Max lines to return (default: 400, 0 = all)."),
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": (
+                            "One-based line to start reading from (default: 1)."
+                        ),
                     },
                 },
                 "required": ["path"],
@@ -123,15 +129,44 @@ class FileReadTool(BaseTool):
                 content=f"Read error: {exc}",
                 success=False,
             )
-        max_lines = params.get("max_lines")
-        if max_lines is not None and max_lines > 0:
-            lines = text.splitlines(keepends=True)
-            text = "".join(lines[:max_lines])
+        lines = text.splitlines(keepends=True)
+        try:
+            start_line = max(1, int(params.get("start_line", 1)))
+        except (TypeError, ValueError):
+            start_line = 1
+        try:
+            max_lines = int(params.get("max_lines", 400))
+        except (TypeError, ValueError):
+            max_lines = 400
+        start_index = start_line - 1
+        selected = (
+            lines[start_index:]
+            if max_lines <= 0
+            else lines[start_index : start_index + max_lines]
+        )
+        body = "".join(selected)
+        end_line = start_index + len(selected)
+        truncated = end_line < len(lines)
+        header = (
+            f"File: {path.resolve()}\n"
+            f"Size: {size} bytes; total lines: {len(lines)}; "
+            f"showing lines {start_line}-{end_line}"
+        )
+        if truncated:
+            header += f" (truncated; continue with start_line={end_line + 1})"
+        text = f"{header}\n\n{body}"
         return ToolResult(
             tool_name="file_read",
             content=text,
             success=True,
-            metadata={"path": str(path.resolve()), "size_bytes": size},
+            metadata={
+                "path": str(path.resolve()),
+                "size_bytes": size,
+                "start_line": start_line,
+                "end_line": end_line,
+                "total_lines": len(lines),
+                "truncated": truncated,
+            },
         )
 
 

@@ -113,6 +113,7 @@ if not _DATA_BOUNDARY_BOOTSTRAP:
     from openjarvis.cli.doctor_cmd import doctor
     from openjarvis.cli.eval_cmd import eval_group
     from openjarvis.cli.feedback_cmd import feedback_group
+    from openjarvis.cli.friends_cmd import friends
     from openjarvis.cli.gateway_cmd import gateway
     from openjarvis.cli.gui_cmd import gui
     from openjarvis.cli.host_cmd import host
@@ -128,6 +129,7 @@ if not _DATA_BOUNDARY_BOOTSTRAP:
     from openjarvis.cli.scheduler_cmd import scheduler
     from openjarvis.cli.self_update_cmd import self_update
     from openjarvis.cli.serve import serve
+    from openjarvis.cli.setup_cmd import setup
     from openjarvis.cli.skill_cmd import skill
     from openjarvis.cli.telemetry_cmd import telemetry
     from openjarvis.cli.tool_cmd import tool
@@ -138,6 +140,8 @@ if not _DATA_BOUNDARY_BOOTSTRAP:
     cli.add_command(ask, "ask")
     cli.add_command(chat, "chat")
     cli.add_command(serve, "serve")
+    cli.add_command(setup, "setup")
+    cli.add_command(friends, "friends")
     cli.add_command(model, "model")
     cli.add_command(memory, "memory")
     cli.add_command(mine, "mine")

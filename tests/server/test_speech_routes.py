@@ -83,8 +83,37 @@ def test_transcribe_endpoint_offloads_backend_work(client, mock_speech_backend):
     mock_to_thread.assert_awaited_once()
     args, kwargs = mock_to_thread.await_args
     assert args == (mock_speech_backend.transcribe, b"fake audio data")
-    assert kwargs == {"format": "wav", "language": None}
+    assert kwargs == {"format": "wav", "language": "zh"}
     assert response.json()["text"] == "Offloaded"
+
+
+def test_transcribe_defaults_to_simplified_chinese(client, mock_speech_backend):
+    mock_speech_backend.transcribe.return_value = TranscriptionResult(
+        text="請讀取這個檔案。", language="zh"
+    )
+    response = client.post(
+        "/v1/speech/transcribe",
+        files={"file": ("test.wav", b"audio", "audio/wav")},
+    )
+    assert response.status_code == 200
+    assert response.json()["text"] == "请读取这个档案。"
+    assert mock_speech_backend.transcribe.call_args.kwargs["language"] == "zh"
+
+
+def test_transcribe_english_selection_overrides_chinese_default(
+    client, mock_speech_backend
+):
+    mock_speech_backend.transcribe.return_value = TranscriptionResult(
+        text="Please open my file.", language="en"
+    )
+    response = client.post(
+        "/v1/speech/transcribe",
+        data={"language": "en"},
+        files={"file": ("test.wav", b"audio", "audio/wav")},
+    )
+    assert response.status_code == 200
+    assert response.json()["text"] == "Please open my file."
+    assert mock_speech_backend.transcribe.call_args.kwargs["language"] == "en"
 
 
 def test_transcribe_endpoint_surfaces_backend_error(client, mock_speech_backend):

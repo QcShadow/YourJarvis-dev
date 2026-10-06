@@ -482,6 +482,11 @@ def _resolve_tool_specs(tool_config: Any) -> List[Dict[str, Any]]:
 # them. Only forwarded when explicitly set, so default agents send nothing
 # extra and engines that don't support a key never receive it. (#386)
 _SAMPLER_PARAM_KEYS = (
+    "num_ctx",
+    "num_gpu",
+    "num_thread",
+    "think",
+    "keep_alive",
     "top_p",
     "top_k",
     "min_p",
@@ -884,13 +889,23 @@ async def _stream_managed_agent(
 
     completion_lock = threading.Lock()
     completion_called = False
+    scheduler_task: Dict[str, Any] = {"id": None, "error": None, "writer_lock": False}
 
     def _complete_stream() -> None:
         nonlocal completion_called
         with completion_lock:
-            if completion_called or on_complete is None:
+            if completion_called:
                 return
             completion_called = True
+        if scheduler_task["id"]:
+            from openjarvis.core.model_scheduler import finish_task
+            finish_task(scheduler_task["id"], scheduler_task["error"])
+        if scheduler_task["writer_lock"]:
+            from openjarvis.core.model_scheduler import WRITER_LOCK
+            WRITER_LOCK.release()
+            scheduler_task["writer_lock"] = False
+        if on_complete is None:
+            return
         try:
             on_complete()
         except Exception:
@@ -923,7 +938,11 @@ async def _stream_managed_agent(
 
         app_config = load_config()
 
-    final_system_prompt = _build_managed_system_prompt(system_prompt or "", app_config)
+    final_system_prompt = (
+        system_prompt or ""
+        if config.get("persona_mode") == "independent"
+        else _build_managed_system_prompt(system_prompt or "", app_config)
+    )
 
     if final_system_prompt and final_system_prompt.strip():
         llm_messages.append(
@@ -1331,6 +1350,9 @@ async def _stream_managed_agent(
     # Forward any per-agent sampler params (repetition_penalty, top_p, …) so
     # locally-hosted models can be tuned per agent (#386).
     stream_kwargs.update(_sampler_kwargs(config))
+    if model.startswith("jarvis-writer:"):
+        from openjarvis.core.model_scheduler import settings as scheduler_settings
+        stream_kwargs.update(num_gpu=0, keep_alive=scheduler_settings()["writer_idle_seconds"])
 
     # Shared state between the generator and the BackgroundTask that
     # runs after the SSE response completes (or the client disconnects
@@ -1385,6 +1407,15 @@ async def _stream_managed_agent(
 
     async def generate():
         """Async generator yielding SSE-formatted chunks with real token streaming."""
+        if model.startswith("jarvis-writer:"):
+            from openjarvis.core.model_scheduler import WRITER_LOCK, begin_task, update_task
+            import asyncio
+            import time
+            scheduler_task["id"] = begin_task("writer", model, user_content, "cpu")
+            while not WRITER_LOCK.acquire(blocking=False):
+                await asyncio.sleep(0.2)
+            scheduler_task["writer_lock"] = True
+            update_task(scheduler_task["id"], status="running", started_at=time.time())
 
         collected_content = ""
         collected_tool_calls: List[Dict[str, Any]] = []
@@ -1450,6 +1481,7 @@ async def _stream_managed_agent(
 
             except Exception as exc:
                 logger.error("Managed agent stream error: %s", exc, exc_info=True)
+                scheduler_task["error"] = str(exc)
                 error_data = {
                     "id": chunk_id,
                     "object": "chat.completion.chunk",
@@ -1519,13 +1551,12 @@ async def _stream_managed_agent(
 
                     try:
                         if tool_name in resolved_by_name:
-                            result = stream_tool_executor.execute(
-                                MsgToolCall(
-                                    id=tc["id"],
-                                    name=tool_name,
-                                    arguments=tool_args,
-                                )
-                            )
+                            call = MsgToolCall(id=tc["id"], name=tool_name, arguments=tool_args)
+                            if tool_name == "local_image_generate":
+                                import asyncio
+                                result = await asyncio.to_thread(stream_tool_executor.execute, call)
+                            else:
+                                result = stream_tool_executor.execute(call)
                             tool_result_content = result.content
                             tool_succeeded = bool(result.success)
                         else:

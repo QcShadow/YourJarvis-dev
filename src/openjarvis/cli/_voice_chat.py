@@ -58,6 +58,15 @@ class VoiceSession:
             self._stt_resolved = True
         return self._stt_backend
 
+    def get_stt_language(self) -> str | None:
+        """Return the configured recognition language, or auto-detect."""
+        if self._config is None:
+            from openjarvis.core.config import load_config
+
+            self._config = load_config()
+        speech = getattr(self._config, "speech", None)
+        return (getattr(speech, "language", "") or "").strip() or None
+
     def get_tts_backend(self) -> Any:
         """Return a cached healthy TTS backend, falling through once per key."""
         if self._tts_backend is not None:
@@ -152,7 +161,11 @@ def record_voice(
 
     console.print("[dim]Transcribing…[/dim]")
     try:
-        result = backend.transcribe(audio_bytes, format="wav")
+        result = backend.transcribe(
+            audio_bytes,
+            format="wav",
+            language=active_session.get_stt_language(),
+        )
         text = result.text.strip()
         if text:
             console.print(f"[bold]You (voice):[/bold] {_terminal_safe_text(text)}")

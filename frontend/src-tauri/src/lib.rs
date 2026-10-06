@@ -11,23 +11,11 @@ const JARVIS_PORT: u16 = 8000;
 const DESKTOP_UV_SYNC_COMMAND: &str =
     "uv sync --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
 
-/// Small, fast model used when startup needs a default Ollama tag.
-const STARTUP_MODEL: &str = "qwen3.5:4b";
+/// Local conversational model used by this JARVIS desktop deployment.
+const STARTUP_MODEL: &str = "qwen3.5:9b";
 
 /// Tiny fallback model if even the startup model can't be pulled.
 const FALLBACK_MODEL: &str = "qwen3:0.6b";
-
-/// Qwen3.5 model variants, ordered smallest to largest.
-/// Each entry is (ollama_tag, approximate_download_size_gb, min_ram_gb).
-const QWEN35_MODELS: &[(&str, f64, f64)] = &[
-    ("qwen3.5:0.8b", 1.0, 4.0),
-    ("qwen3.5:2b", 2.7, 6.0),
-    ("qwen3.5:4b", 3.4, 8.0),
-    ("qwen3.5:9b", 6.6, 12.0),
-    ("qwen3.5:27b", 17.0, 24.0),
-    ("qwen3.5:35b", 24.0, 32.0),
-    ("qwen3.5:122b", 81.0, 96.0),
-];
 
 /// Get total system RAM in GB.
 fn total_ram_gb() -> f64 {
@@ -78,24 +66,18 @@ fn total_ram_gb() -> f64 {
     8.0
 }
 
-/// Return the Qwen3.5 models that fit in `ram_gb`, smallest first.
-fn models_that_fit_in(ram_gb: f64) -> Vec<&'static str> {
-    QWEN35_MODELS
-        .iter()
-        .filter(|(_, _, min_ram)| ram_gb >= *min_ram)
-        .map(|(tag, _, _)| *tag)
-        .collect()
-}
-
-/// The default local model: the second-largest Qwen3.5 model that fits in
-/// `ram_gb`. Falls back to the only fitting model, or FALLBACK_MODEL if none
-/// fit. Deliberately NOT the largest — leaves RAM headroom for the OS/app.
+/// Choose a conversational model while leaving memory for speech and tools.
 fn default_local_model(ram_gb: f64) -> &'static str {
-    let fitting = models_that_fit_in(ram_gb);
-    match fitting.len() {
-        0 => FALLBACK_MODEL,
-        1 => fitting[0],
-        n => fitting[n - 2],
+    if ram_gb >= 12.0 {
+        "qwen3.5:9b"
+    } else if ram_gb >= 8.0 {
+        "qwen3.5:4b"
+    } else if ram_gb >= 6.0 {
+        "qwen3.5:2b"
+    } else if ram_gb >= 4.0 {
+        "qwen3.5:0.8b"
+    } else {
+        FALLBACK_MODEL
     }
 }
 
@@ -139,7 +121,7 @@ fn boot_plan(cfg: &InferenceConfig, ram_gb: f64) -> BootPlan {
                     "--model".into(),
                     model,
                     "--agent".into(),
-                    "simple".into(),
+                    "orchestrator".into(),
                 ],
             }
         }
@@ -170,7 +152,7 @@ fn boot_plan(cfg: &InferenceConfig, ram_gb: f64) -> BootPlan {
                     "--model".into(),
                     model,
                     "--agent".into(),
-                    "simple".into(),
+                    "orchestrator".into(),
                 ],
             }
         }
@@ -182,6 +164,50 @@ fn home_dir() -> String {
     std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_default()
+}
+
+/// Locate the portable JARVIS data root (config.toml + src/ checkout).
+/// The personal Windows build is copied into D:\Jarvis, so it reuses the
+/// exact same models, memory and configuration as the CLI and browser UI.
+fn jarvis_data_root() -> Option<std::path::PathBuf> {
+    if let Ok(root) = std::env::var("OPENJARVIS_HOME") {
+        let path = std::path::PathBuf::from(root);
+        if path.join("config.toml").is_file() {
+            return Some(path);
+        }
+    }
+
+    let mut seeds = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            seeds.push(parent.to_path_buf());
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        seeds.push(cwd);
+    }
+    for seed in seeds {
+        for candidate in seed.ancestors().take(10) {
+            if candidate.join("config.toml").is_file()
+                && candidate.join("src").join("pyproject.toml").is_file()
+            {
+                return Some(candidate.to_path_buf());
+            }
+        }
+    }
+    None
+}
+
+fn configure_portable_process(cmd: &mut tokio::process::Command) {
+    let Some(root) = jarvis_data_root() else {
+        return;
+    };
+    cmd.env("OPENJARVIS_HOME", &root)
+        .env("OLLAMA_MODELS", root.join("models").join("ollama"))
+        .env("HF_HOME", root.join("cache").join("huggingface"))
+        .env("UV_CACHE_DIR", root.join("cache").join("uv"))
+        .env("HF_HUB_OFFLINE", "1")
+        .env("JARVIS_SKIP_MODEL_PICK", "1");
 }
 
 /// Resolve full path to a binary by checking common locations.
@@ -203,7 +229,29 @@ fn resolve_bin(name: &str) -> String {
         let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
         let programfiles = std::env::var("ProgramFiles").unwrap_or_default();
         let programfiles_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_default();
-        vec![
+        let mut values = Vec::new();
+        if let Some(root) = jarvis_data_root() {
+            values.extend([
+                root.join("tools")
+                    .join("uv")
+                    .join(format!("{name}.exe"))
+                    .display()
+                    .to_string(),
+                root.join("runtimes")
+                    .join("ollama")
+                    .join(format!("{name}.exe"))
+                    .display()
+                    .to_string(),
+                root.join("runtimes")
+                    .join("rust")
+                    .join("cargo")
+                    .join("bin")
+                    .join(format!("{name}.exe"))
+                    .display()
+                    .to_string(),
+            ]);
+        }
+        values.extend([
             // Git for Windows — standard install paths
             format!("{programfiles}\\Git\\cmd\\{name}.exe"),
             format!("{programfiles_x86}\\Git\\cmd\\{name}.exe"),
@@ -220,7 +268,8 @@ fn resolve_bin(name: &str) -> String {
             format!("{localappdata}\\Programs\\Ollama\\{name}.exe"),
             // uv installs via pip/pipx
             format!("{home}\\AppData\\Roaming\\Python\\Scripts\\{name}.exe"),
-        ]
+        ]);
+        values
     };
 
     for path in &candidates {
@@ -275,6 +324,13 @@ fn find_project_root() -> Option<std::path::PathBuf> {
         let path = std::path::PathBuf::from(&root);
         if path.join("pyproject.toml").exists() {
             return Some(path);
+        }
+    }
+
+    if let Some(root) = jarvis_data_root() {
+        let source = root.join("src");
+        if source.join("pyproject.toml").is_file() {
+            return Some(source);
         }
     }
 
@@ -951,10 +1007,15 @@ async fn verify_openjarvis_rust_extension(
     uv_bin: &str,
 ) -> Result<(), String> {
     let mut cmd = tokio::process::Command::new(uv_bin);
-    cmd.args(["run", "python", "-c", "import openjarvis_rust"])
+    cmd.arg("run");
+    if jarvis_data_root().is_some() {
+        cmd.arg("--no-sync");
+    }
+    cmd.args(["python", "-c", "import openjarvis_rust"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .current_dir(root);
+    configure_portable_process(&mut cmd);
     prepare_subprocess_for_appimage(&mut cmd);
     add_cargo_bin_to_path(&mut cmd);
     cmd.kill_on_drop(true);
@@ -1046,6 +1107,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 .env("OLLAMA_HOST", format!("127.0.0.1:{}", OLLAMA_PORT))
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
+            configure_portable_process(&mut sidecar_cmd);
             // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
             prepare_subprocess_for_appimage(&mut sidecar_cmd);
             match spawn_owned_child(&mut sidecar_cmd) {
@@ -1461,7 +1523,17 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         return;
     }
 
-    // Install dependencies automatically (handles fresh clones).
+    // The personal portable install already has a working venv. Do not run a
+    // network dependency sync on every desktop launch; it is slow, can alter
+    // the environment, and is unnecessary for the preinstalled JARVIS app.
+    let portable_venv_ready = jarvis_data_root().is_some()
+        && root
+            .join(".venv")
+            .join("Scripts")
+            .join("jarvis.exe")
+            .is_file();
+
+    // Install dependencies automatically for ordinary fresh clones.
     //
     // Previously we ran `uv sync` with both stdout AND stderr piped to
     // /dev/null and discarded the exit code (`let _ = …`). When `uv sync`
@@ -1475,46 +1547,48 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // to the user BEFORE the long server-start wait. The status detail
     // message also indicates this can take a couple of minutes on first
     // boot so users don't restart the app thinking it's stuck.
-    {
+    if !portable_venv_ready {
         let mut s = status.lock().await;
         s.detail = "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
-    }
-    let mut sync_cmd = tokio::process::Command::new(&uv_bin);
-    sync_cmd
-        .args([
-            "sync",
-            "--extra",
-            "desktop",
-            "--extra",
-            "inference-cloud",
-            "--extra",
-            "inference-google",
-            // openjarvis_rust lives in a uv dependency group (not the published
-            // `desktop` extra) so pip installs from PyPI don't require it (#584).
-            "--group",
-            "desktop-native",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .current_dir(root);
-    // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
-    prepare_subprocess_for_appimage(&mut sync_cmd);
-    add_cargo_bin_to_path(&mut sync_cmd);
-    sync_cmd.kill_on_drop(true);
-    let sync_output = sync_cmd.output().await;
-    match sync_output {
-        Ok(out) if !out.status.success() => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
-            return;
+        drop(s);
+        let mut sync_cmd = tokio::process::Command::new(&uv_bin);
+        sync_cmd
+            .args([
+                "sync",
+                "--extra",
+                "desktop",
+                "--extra",
+                "inference-cloud",
+                "--extra",
+                "inference-google",
+                // openjarvis_rust lives in a uv dependency group (not the published
+                // `desktop` extra) so pip installs from PyPI don't require it (#584).
+                "--group",
+                "desktop-native",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(root);
+        configure_portable_process(&mut sync_cmd);
+        // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
+        prepare_subprocess_for_appimage(&mut sync_cmd);
+        add_cargo_bin_to_path(&mut sync_cmd);
+        sync_cmd.kill_on_drop(true);
+        let sync_output = sync_cmd.output().await;
+        match sync_output {
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
+                return;
+            }
+            Err(e) => {
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
+                return;
+            }
+            Ok(_) => {} // success — fall through
         }
-        Err(e) => {
-            let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
-            return;
-        }
-        Ok(_) => {} // success — fall through
     }
 
     {
@@ -1533,13 +1607,16 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     }
 
     let mut cmd = tokio::process::Command::new(&uv_bin);
-    let mut serve_argv: Vec<String> = vec![
-        "run".into(),
+    let mut serve_argv: Vec<String> = vec!["run".into()];
+    if portable_venv_ready {
+        serve_argv.push("--no-sync".into());
+    }
+    serve_argv.extend([
         "jarvis".into(),
         "serve".into(),
         "--port".into(),
         JARVIS_PORT.to_string(),
-    ];
+    ]);
     serve_argv.extend(plan.serve_args.iter().cloned());
     // If the Ollama pull fell back to a different tag than planned, serve the
     // tag that is actually present. boot_plan always emits `--model` followed
@@ -1558,6 +1635,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .current_dir(root);
+    configure_portable_process(&mut cmd);
     // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455) —
     // do this BEFORE cmd.env() calls below so our explicit cloud-key env
     // additions aren't accidentally stripped.
@@ -2029,6 +2107,7 @@ async fn transcribe_audio(
     api_url: String,
     audio_data: Vec<u8>,
     filename: String,
+    language: String,
 ) -> Result<serde_json::Value, String> {
     let url = format!("{}/v1/speech/transcribe", api_url);
     let client = reqwest::Client::new();
@@ -2038,7 +2117,9 @@ async fn transcribe_audio(
         .mime_str("audio/webm")
         .map_err(|e| format!("Failed to create multipart: {}", e))?;
 
-    let form = reqwest::multipart::Form::new().part("file", part);
+    let form = reqwest::multipart::Form::new()
+        .part("file", part)
+        .text("language", language);
 
     let resp = client
         .post(&url)
@@ -2517,8 +2598,12 @@ fn legacy_config_is_confirmed() -> bool {
     true
 }
 
-/// Path to the inference-source config (~/.openjarvis/inference.json).
+/// Path to the inference-source config. Portable builds keep it with all
+/// other JARVIS state; generic installs retain the upstream home location.
 fn inference_config_path() -> std::path::PathBuf {
+    if let Some(root) = jarvis_data_root() {
+        return root.join("inference.json");
+    }
     std::path::PathBuf::from(home_dir())
         .join(".openjarvis")
         .join("inference.json")
@@ -2809,9 +2894,34 @@ fn parse_configured_inference_config(text: &str) -> Option<InferenceConfig> {
 }
 
 fn read_configured_inference_config() -> Option<InferenceConfig> {
-    std::fs::read_to_string(inference_config_path())
-        .ok()
-        .and_then(|text| parse_configured_inference_config(&text))
+    let path = inference_config_path();
+    if path.exists() {
+        return std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| parse_configured_inference_config(&text));
+    }
+
+    let root = jarvis_data_root()?;
+    let text = std::fs::read_to_string(root.join("config.toml")).ok()?;
+    let document = text.parse::<toml_edit::DocumentMut>().ok()?;
+    let intelligence = document.get("intelligence")?;
+    let model = intelligence
+        .get("model_chat")
+        .and_then(|item| item.as_str())
+        .or_else(|| {
+            intelligence
+                .get("default_model")
+                .and_then(|item| item.as_str())
+        })
+        .unwrap_or(STARTUP_MODEL)
+        .to_string();
+    Some(InferenceConfig {
+        kind: SourceKind::Ollama,
+        confirmed: true,
+        model: Some(model),
+        host: None,
+        engine: None,
+    })
 }
 
 /// Read the on-disk inference config, or the Ollama default if absent.
@@ -2848,9 +2958,13 @@ fn upsert_engine_host(existing: &str, engine: &str, host: &str) -> Result<String
 /// The `<ENGINE>_HOST` env var is unreliable — it is shadowed by the engine's
 /// non-empty default host in the Python layer — so config.toml is the override.
 fn set_engine_host_in_config(engine: &str, host: &str) -> Result<(), String> {
-    let path = std::path::PathBuf::from(home_dir())
-        .join(".openjarvis")
-        .join("config.toml");
+    let path = jarvis_data_root()
+        .map(|root| root.join("config.toml"))
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(home_dir())
+                .join(".openjarvis")
+                .join("config.toml")
+        });
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -3306,11 +3420,12 @@ pub fn run() {
 
     let boot_backend_ref = backend.clone();
     let boot_status_ref = status.clone();
+    let start_hidden =
+        configured_at_launch.is_some() && std::env::args().any(|arg| arg == "--hidden");
 
     tauri::Builder::default()
         .manage(backend.clone())
         .manage(status.clone())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
@@ -3327,11 +3442,11 @@ pub fn run() {
         }))
         .setup(move |app| {
             // System tray
-            let show = MenuItemBuilder::with_id("show", "Show / Hide").build(app)?;
+            let show = MenuItemBuilder::with_id("show", "显示 / 隐藏 JARVIS").build(app)?;
             let health = MenuItemBuilder::with_id("health", "Health: starting...")
                 .enabled(false)
                 .build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit OpenJarvis").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "退出 JARVIS").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show)
@@ -3343,7 +3458,7 @@ pub fn run() {
 
             let _tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("OpenJarvis")
+                .tooltip("JARVIS 本地助手")
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "show" => {
@@ -3363,6 +3478,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Closing the main window keeps the assistant alive in the tray,
+            // including the in-page wake-word listener. Quit remains an
+            // explicit tray action so background audio never ends by surprise.
+            if let Some(window) = app.get_webview_window("main") {
+                let close_window = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = close_window.hide();
+                    }
+                });
+            }
+
             // Create native macOS overlay panel
             #[cfg(target_os = "macos")]
             unsafe {
@@ -3374,16 +3502,31 @@ pub fn run() {
                 use tauri_plugin_global_shortcut::{
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
-                let sc = Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space);
-                if let Err(e) = app.global_shortcut().on_shortcut(sc, |_app, _sc, ev| {
+                #[cfg(target_os = "macos")]
+                let modifiers = Modifiers::META | Modifiers::SHIFT;
+                #[cfg(not(target_os = "macos"))]
+                let modifiers = Modifiers::CONTROL | Modifiers::SHIFT;
+                let sc = Shortcut::new(Some(modifiers), Code::Space);
+                if let Err(e) = app.global_shortcut().on_shortcut(sc, |app, _sc, ev| {
                     if ev.state == ShortcutState::Pressed {
                         #[cfg(target_os = "macos")]
                         unsafe {
                             native_overlay::toggle();
                         }
+                        #[cfg(not(target_os = "macos"))]
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                 }) {
-                    eprintln!("Warning: could not register Cmd+Shift+Space: {e}");
+                    eprintln!("Warning: could not register assistant shortcut: {e}");
+                }
+            }
+
+            if start_hidden {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
                 }
             }
 
@@ -3652,13 +3795,11 @@ mod tests {
     }
 
     #[test]
-    fn default_local_model_picks_second_largest_that_fits() {
-        // QWEN35_MODELS min_ram ladder: 4,6,8,12,24,32,96 GB
-        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b"); // only one fits
-        assert_eq!(default_local_model(8.0), "qwen3.5:2b"); // fits 0.8/2/4 → 2nd-largest
-        assert_eq!(default_local_model(16.0), "qwen3.5:4b"); // fits ..9b → 2nd-largest
-        assert_eq!(default_local_model(32.0), "qwen3.5:27b"); // fits 0.8/2/4/9/27/35b → 2nd-largest is 27b
-        assert_eq!(default_local_model(128.0), "qwen3.5:35b"); // fits all → 2nd-largest
+    fn default_local_model_keeps_room_for_speech() {
+        assert_eq!(default_local_model(4.0), "qwen3.5:0.8b");
+        assert_eq!(default_local_model(8.0), "qwen3.5:4b");
+        assert_eq!(default_local_model(16.0), "qwen3.5:9b");
+        assert_eq!(default_local_model(32.0), "qwen3.5:9b");
     }
 
     #[test]
@@ -3847,7 +3988,7 @@ mod tests {
         };
         let plan = boot_plan(&cfg, 16.0);
         assert!(plan.launch_ollama);
-        assert_eq!(plan.model_to_pull.as_deref(), Some("qwen3.5:4b"));
+        assert_eq!(plan.model_to_pull.as_deref(), Some("qwen3.5:9b"));
         assert!(plan.engine_host.is_none());
         assert!(plan
             .serve_args
@@ -3856,7 +3997,7 @@ mod tests {
         assert!(plan
             .serve_args
             .windows(2)
-            .any(|w| w == ["--model", "qwen3.5:4b"]));
+            .any(|w| w == ["--model", "qwen3.5:9b"]));
     }
 
     #[test]

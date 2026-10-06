@@ -1,6 +1,8 @@
 import { Volume2, Square } from 'lucide-react';
 import { useTts } from '../../hooks/useTts';
 import { useAppStore } from '../../lib/store';
+import { spokenSummary } from '../../lib/message-text';
+import { useVoiceActivity } from '../../lib/voice-activity';
 
 interface Props {
   messageId: string;
@@ -23,7 +25,7 @@ export function SpeakMessageButton({ messageId, content }: Props) {
   return (
     <>
       <button
-        onClick={() => (busy ? stop() : speak(messageId, content))}
+        onClick={() => (busy ? stop() : speak(messageId, spokenSummary(content, useVoiceActivity.getState().speechDetail)))}
         className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
         style={{
           color: busy ? 'var(--color-accent)' : 'var(--color-text-tertiary)',
@@ -35,9 +37,9 @@ export function SpeakMessageButton({ messageId, content }: Props) {
             ? 'Synthesizing...'
             : isMine && state === 'speaking'
               ? 'Stop'
-              : 'Read aloud')
+              : 'Speak short summary')
         }
-        aria-label={busy ? 'Stop reading message' : 'Read message aloud'}
+        aria-label={busy ? 'Stop reading message' : 'Speak short summary'}
       >
         {busy ? <Square size={14} /> : <Volume2 size={14} />}
       </button>

@@ -1,6 +1,7 @@
 import { EnergyDashboard } from '../components/Dashboard/EnergyDashboard';
 import { CostComparison } from '../components/Dashboard/CostComparison';
 import { TraceDebugger } from '../components/Dashboard/TraceDebugger';
+import { ModelUsage } from '../components/Dashboard/ModelUsage';
 
 export function DashboardPage() {
   const now = new Date();
@@ -27,6 +28,8 @@ export function DashboardPage() {
           <EnergyDashboard />
           <CostComparison />
         </div>
+
+        <ModelUsage />
 
         <TraceDebugger />
       </div>

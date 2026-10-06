@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,11 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = 1024
     stream: bool = False
     tools: Optional[List[Dict[str, Any]]] = None
+    stream_mode: Literal["agent", "direct"] = "agent"
+    num_ctx: Optional[int] = Field(default=None, ge=512, le=131072)
+    character_id: Optional[Literal["jarvis-local", "mcu-jarvis"]] = None
+    output_language: Optional[Literal["zh", "en"]] = None
+    speech_detail: Literal["brief", "full"] = "brief"
 
 
 # ---------------------------------------------------------------------------

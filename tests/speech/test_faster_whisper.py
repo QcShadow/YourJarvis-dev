@@ -20,6 +20,31 @@ def test_faster_whisper_backend_registers():
     assert SpeechRegistry.contains("faster-whisper")
 
 
+def test_chinese_is_simplified_in_full_text_and_segments():
+    from types import SimpleNamespace
+
+    model = MagicMock()
+    model.transcribe.return_value = (
+        [SimpleNamespace(text=" 賈維斯，請打開瀏覽器。Hello Jarvis.", start=0, end=1)],
+        SimpleNamespace(language="zh", language_probability=1, duration=1),
+    )
+    with patch("openjarvis.speech.faster_whisper.WhisperModel", return_value=model):
+        result = FasterWhisperBackend(device="cpu").transcribe(b"audio", language="zh")
+    assert result.text == "贾维斯，请打开浏览器。Hello Jarvis."
+    assert result.segments[0].text == result.text
+    assert model.transcribe.call_args.kwargs["language"] == "zh"
+    assert "简体中文" in model.transcribe.call_args.kwargs["initial_prompt"]
+
+
+def test_english_transcript_is_not_translated_or_rewritten():
+    from openjarvis.speech.text import normalize_transcript
+
+    assert normalize_transcript("Hello Jarvis, open the browser.", "en") == (
+        "Hello Jarvis, open the browser."
+    )
+    assert normalize_transcript("請開啟", "en") == "請開啟"
+
+
 def test_faster_whisper_transcribe():
     """Transcribe returns a TranscriptionResult."""
     from openjarvis.speech._stubs import TranscriptionResult

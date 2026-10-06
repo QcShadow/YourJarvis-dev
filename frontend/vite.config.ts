@@ -25,9 +25,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'OpenJarvis',
-        short_name: 'Jarvis',
-        description: 'On-device AI assistant',
+        name: 'JARVIS 本地助手',
+        short_name: 'JARVIS',
+        description: '运行在本机的私人 AI 助手',
+        lang: 'zh-CN',
         theme_color: '#161618',
         background_color: '#161618',
         display: 'standalone',
@@ -37,8 +38,14 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
+        globPatterns: ['**/*.{js,css,ico,png,svg}'],
+        navigateFallback: undefined,
+        runtimeCaching: [{
+          urlPattern: ({ request, url }) => request.mode === 'navigate'
+            && !/^\/(v1|api|health)(\/|$)/.test(url.pathname),
+          handler: 'NetworkFirst',
+          options: { cacheName: 'jarvis-pages', networkTimeoutSeconds: 3 },
+        }],
       },
     }),
   ],

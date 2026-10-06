@@ -75,7 +75,7 @@ export function ConversationList({ searchQuery }: Props) {
                   fontWeight: isActive ? 500 : 400,
                 }}
               >
-                {conv.title}
+                <span data-i18n-ignore>{conv.title}</span>
               </div>
               <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
                 {formatRelativeTime(conv.updatedAt)}

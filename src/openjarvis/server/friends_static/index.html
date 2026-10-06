@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS · 朋友聊天室</title><link rel="stylesheet" href="/friends.css"><script src="/friends.js" defer></script></head>
+<body><main>
+  <header><div class="mark">J</div><div><h1>JARVIS <span>朋友聊天室</span></h1><p>模型在朋友的主机上运行，你的设备只需浏览器。</p></div></header>
+  <section id="login"><h2>使用邀请令牌连接</h2><p>向主机主人取得自己的邀请令牌。令牌仅保留在本页内存，刷新后重新输入。</p><form id="login-form"><label for="token">邀请令牌</label><input id="token" type="password" autocomplete="off" required maxlength="256" placeholder="jf_…"><button id="connect">连接</button></form></section>
+  <section id="chat" hidden><div class="bar"><span id="connection"></span><div><button id="new-chat" type="button" class="secondary">新对话</button><button id="logout" type="button" class="secondary">断开</button></div></div>
+    <div id="messages" role="log" aria-live="polite" aria-label="聊天记录"><p id="empty">聊点什么？这里可以进行中文对话。聊天记录仅保留在当前页面。</p></div>
+    <form id="chat-form"><label for="prompt">消息</label><textarea id="prompt" rows="3" maxlength="4000" required placeholder="输入消息，Ctrl + Enter 发送"></textarea><div class="actions"><span id="progress"></span><button id="stop" type="button" class="secondary" hidden>停止</button><button id="send">发送</button></div></form>
+    <p class="note">只提供文字聊天。主机处理请求，无私人记忆、文件或桌面工具；当前版本暂未提供语音。每次最多保留最近 12 条消息 / 8000 字上下文，繁忙时会排队。</p>
+  </section>
+  <p id="error" role="alert" hidden></p>
+  <footer>JARVIS · 模型共享测试版</footer>
+</main></body></html>

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { LocalImagePreview } from '../LocalImagePreview';
 import {
   fetchManagedAgents,
   fetchAgentTasks,
@@ -110,6 +112,7 @@ const AVAILABLE_TOOLS = [
   { id: 'shell_exec', label: 'Shell Exec' },
   { id: 'browser', label: 'Browser' },
   { id: 'calculator', label: 'Calculator' },
+  { id: 'local_image_generate', label: '本地生图' },
 ];
 
 interface WizardState {
@@ -160,7 +163,11 @@ function LaunchWizard({
 
   function selectTemplate(id: string) {
     const tpl = templates.find((t) => t.id === id);
-    update({ templateId: id, name: tpl?.name || wizard.name });
+    update({ templateId: id, name: tpl?.name || wizard.name,
+      selectedTools: (tpl?.tools as string[]) || [],
+      scheduleType: (tpl?.schedule_type as string) || 'manual',
+      scheduleValue: (tpl?.schedule_value as string) || '',
+    });
   }
 
   async function handleLaunch() {
@@ -521,7 +528,8 @@ function InteractTab({ apiUrl, agentId }: { apiUrl: string; agentId: string }) {
                   color: C.text,
                 }}
               >
-                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{isUser ? msg.content :
+                  <ReactMarkdown components={{ img: ({ src, alt }) => <LocalImagePreview src={src} alt={alt} /> }}>{msg.content}</ReactMarkdown>}</div>
                 <div style={{ color: C.overlay0, fontSize: 10, marginTop: 4, textAlign: isUser ? 'right' : 'left' }}>
                   {isUser ? `You · ${msg.mode}` : 'Agent'} · {msg.status}
                 </div>

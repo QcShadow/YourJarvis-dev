@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -81,6 +82,20 @@ def client_with_agent():
     agent = _make_agent()
     app = create_app(engine, "test-model", agent=agent, config=_test_config())
     return TestClient(app)
+
+
+def test_dashboard_path_uses_frontend_spa(client):
+    frontend_index = (
+        Path(__file__).parents[2] / "src/openjarvis/server/static/index.html"
+    )
+    if not frontend_index.exists():
+        pytest.skip("frontend build not present")
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert '<div id="root"></div>' in response.text
+    legacy = client.get("/savings-dashboard")
+    assert legacy.status_code == 200
+    assert "Savings Dashboard" in legacy.text
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +699,24 @@ class TestChatCompletions:
                 )
 
         engine = _make_engine(content="ENGINE BYPASS")
+        from openjarvis.engine._stubs import StreamChunk
+
+        stream_turns = []
+
+        async def agent_stream(messages, **kwargs):
+            stream_turns.append(kwargs)
+            if len(stream_turns) == 1:
+                yield StreamChunk(tool_calls=[{
+                    "index": 0, "id": "call_1", "function": {
+                        "name": "file_read", "arguments": '{"path": "README.md"}',
+                    },
+                }])
+            else:
+                yield StreamChunk(content="README fixture ")
+                yield StreamChunk(content="contents")
+            yield StreamChunk(finish_reason="stop")
+
+        engine.stream_full = agent_stream
         engine.generate.side_effect = [
             {
                 "content": "",
@@ -741,7 +774,8 @@ class TestChatCompletions:
 
         assert content == "README fixture contents"
         assert executions == ["README.md"]
-        assert engine.generate.call_count == 2
+        assert len(stream_turns) == 2
+        engine.generate.assert_not_called()
 
     def test_streaming_with_tools_emits_tool_calls_and_bypasses_agent(self):
         """Regression for the streaming analog of #414.
@@ -1618,6 +1652,11 @@ class TestHealthEndpoint:
         resp = client.get("/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+        body = resp.json()
+        assert body["inference_available"] is True
+        assert body["uptime_seconds"] >= 0
+        assert body["subsystems"]["voice"]["phase"] == "stopped"
+        assert body["subsystems"]["background_work"]["active"] == 0
 
     def test_unhealthy(self):
         engine = _make_engine()

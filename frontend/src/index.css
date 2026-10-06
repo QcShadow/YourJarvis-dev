@@ -754,3 +754,22 @@
   background: var(--color-accent);
   text-decoration: none;
 }
+
+@keyframes jarvis-voice-pulse {
+  0%, 100% { transform: scaleY(.5); opacity: .55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.jarvis-text-composer { max-height: 260px; opacity: 1; transition: max-height 240ms ease, opacity 180ms ease, padding 240ms ease, transform 240ms ease; }
+.jarvis-text-composer[data-collapsed="true"] { max-height: 0; opacity: 0; padding-block: 0 !important; border-width: 0 !important; transform: translateY(-8px); pointer-events: none; overflow: hidden; }
+.jarvis-voice-composer { transition: padding 240ms ease, background 240ms ease; }
+.jarvis-voice-composer[data-foreground="true"] { min-height: 80px; padding-block: 18px; }
+.jarvis-voice-composer[data-foreground="false"] { padding-block: 8px; }
+.jarvis-voice-bars span { transition: height 100ms ease-out; }
+.jarvis-voice-bars[data-active="true"][data-listening="false"] span {
+  animation: jarvis-voice-pulse 900ms ease-in-out infinite;
+}
+.jarvis-voice-bars[data-active="false"] { opacity: .35; }
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-text-composer, .jarvis-voice-composer { transition: none !important; }
+  .jarvis-voice-bars span { animation: none !important; transition: none; }
+}

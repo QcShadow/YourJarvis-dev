@@ -33,6 +33,7 @@ def _default_path() -> Path:
 
 
 TOOL_CREDENTIALS: dict[str, list[str]] = {
+    "llm": ["JARVIS_LLM_API_KEY"],
     "web_search": ["TAVILY_API_KEY", "YOUDOTCOM_API_KEY", "SERPLY_API_KEY"],
     "get_weather": ["OPENWEATHERMAP_API_KEY"],
     "image_generate": ["OPENAI_API_KEY"],

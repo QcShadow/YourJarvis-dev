@@ -1,12 +1,18 @@
 import type { ResearchEvent, SSEEvent } from '../types';
 import { getBase, authHeaders } from './api';
+import { useAppStore } from './store';
+import { responseLanguage } from './voice-settings';
+import { useVoiceActivity } from './voice-activity';
+import type { InferenceMessage } from './conversation-history';
 
 export interface ChatRequest {
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: InferenceMessage[];
   stream: true;
   temperature?: number;
   max_tokens?: number;
+  stream_mode?: 'agent' | 'direct';
+  num_ctx?: number;
 }
 
 export async function* streamChat(
@@ -14,10 +20,13 @@ export async function* streamChat(
   signal?: AbortSignal,
 ): AsyncGenerator<SSEEvent> {
   const base = getBase();
+  const settings = useAppStore.getState().settings;
   const response = await fetch(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(request),
+    body: JSON.stringify({ character_id: settings.characterId,
+      speech_detail: useVoiceActivity.getState().speechDetail,
+      output_language: responseLanguage(settings), ...request }),
     signal,
   });
 
@@ -28,6 +37,7 @@ export async function* streamChat(
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent: string | undefined;
 
   try {
     while (true) {
@@ -37,8 +47,6 @@ export async function* streamChat(
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-
-      let currentEvent: string | undefined;
 
       for (const line of lines) {
         if (line.startsWith('event: ')) {

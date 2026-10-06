@@ -311,9 +311,27 @@ def create_app(
     # Exposed so WebSocket handlers can authenticate the handshake (the HTTP
     # AuthMiddleware never sees WS upgrade requests). Empty = auth disabled.
     app.state.api_key = api_key
+    from openjarvis.server.voice_lifecycle import register_voice_restore
+
+    register_voice_restore(app)
 
     @app.on_event("shutdown")
     async def _shutdown_managed_runtime() -> None:
+        from openjarvis.server.voice_lifecycle import cancel_restore
+
+        # Reject new microphone/work starts before asynchronous teardown.
+        with app.state._managed_worker_lock:
+            app.state._managed_runtime_stopping = True
+        await cancel_restore(app)
+        voice_runtime = getattr(app.state, "voice_runtime", None)
+        if voice_runtime is not None:
+            await voice_runtime.stop()
+        background_work = getattr(app.state, "background_work", None)
+        work_drained = True
+        if background_work is not None:
+            work_drained = await background_work.close()
+            if work_drained:
+                background_work.store.close()
         # Quiesce every producer before touching the shared MCP pool. Route
         # workers are registered under this lock, so none can slip in after
         # the snapshot. The scheduler has a two-phase stop because closing an
@@ -394,7 +412,7 @@ def create_app(
         # to this app process. Close it only after every tracked consumer has
         # been drained; injected/borrowed backends remain the caller's concern.
         owned_memory_backend = None
-        runtime_drained = scheduler_drained and not alive
+        runtime_drained = scheduler_drained and not alive and work_drained
         if runtime_drained:
             with app.state._memory_backend_lock:
                 if app.state._owns_memory_backend:
@@ -492,6 +510,9 @@ def create_app(
                     pass
 
     app.include_router(router)
+    from openjarvis.server.work_routes import router as work_router
+
+    app.include_router(work_router)
     app.include_router(dashboard_router)
     app.include_router(comparison_router)
     app.include_router(create_connectors_router())

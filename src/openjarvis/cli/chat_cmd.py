@@ -114,6 +114,12 @@ def chat(
 
     config = load_config()
     bus = EventBus(record_history=False)
+    agent_template = config.agent.default_system_prompt or ""
+    if voice_mode:
+        agent_template += (
+            "\n\n语音模式规则：优先用一到两句、最多约六十个汉字回答。"
+            "只朗读结论和必要追问；用户明确要求详细说明时才展开。"
+        )
 
     import dataclasses as _dc
 
@@ -262,7 +268,7 @@ def chat(
                     from openjarvis.prompt.builder import SystemPromptBuilder
 
                     kwargs["prompt_builder"] = SystemPromptBuilder(
-                        agent_template=config.agent.default_system_prompt or "",
+                        agent_template=agent_template,
                         memory_files_config=effective_mf,
                         system_prompt_config=config.system_prompt,
                     )
@@ -348,7 +354,7 @@ def chat(
         from openjarvis.prompt.builder import SystemPromptBuilder
 
         builder = SystemPromptBuilder(
-            agent_template=config.agent.default_system_prompt or "",
+            agent_template=agent_template,
             memory_files_config=effective_mf,
             system_prompt_config=config.system_prompt,
         )

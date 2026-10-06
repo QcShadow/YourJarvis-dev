@@ -153,6 +153,14 @@ class TestWebSearchTool:
 
         monkeypatch.setattr(builtins, "__import__", _mock_import)
 
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.return_value = [
+            {"title": "DDG", "href": "https://example.com", "body": "b"}
+        ]
+        mock_ddgs_module = MagicMock()
+        mock_ddgs_module.DDGS.return_value = mock_ddgs
+        monkeypatch.setitem(sys.modules, "ddgs", mock_ddgs_module)
+
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="test query")
         assert result.success is True
@@ -237,6 +245,14 @@ class TestWebSearchTool:
             return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", _mock_import)
+
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.return_value = [
+            {"title": "DDG", "href": "https://example.com", "body": "b"}
+        ]
+        mock_ddgs_module = MagicMock()
+        mock_ddgs_module.DDGS.return_value = mock_ddgs
+        monkeypatch.setitem(sys.modules, "ddgs", mock_ddgs_module)
 
         tool = WebSearchTool(api_key="test-key")
         result = tool.execute(query="test query")
@@ -1142,6 +1158,33 @@ class TestSerplySearch:
 
 
 class TestFallbackVisibility:
+    def test_double_failure_preserves_both_safe_diagnostics(self, monkeypatch):
+        """A failed fallback must not hide the primary provider failure."""
+        monkeypatch.setenv("YOUDOTCOM_API_KEY", "ydc-secret")
+        import httpx
+
+        monkeypatch.setattr(
+            httpx,
+            "get",
+            MagicMock(
+                side_effect=httpx.ConnectError("Authorization: Bearer ydc-secret")
+            ),
+        )
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.side_effect = RuntimeError("DDG DNS unavailable")
+        mock_module = MagicMock()
+        mock_module.DDGS.return_value = mock_ddgs
+        monkeypatch.setitem(sys.modules, "ddgs", mock_module)
+
+        result = WebSearchTool(engine="youcom").execute(query="q")
+
+        assert result.success is False
+        assert result.metadata["fallback_from"] == "youcom"
+        assert "fallback_error" in result.metadata
+        assert "DNS unavailable" in result.metadata["fallback_error"]
+        assert "ydc-secret" not in result.metadata["fallback_reason"]
+        assert "ydc-secret" not in result.content
+
     def test_fallback_is_logged_at_warning(self, monkeypatch, caplog):
         """Regression for the silent-degradation half of #923: a typo'd key
         used to look identical to a working install with quieter results."""

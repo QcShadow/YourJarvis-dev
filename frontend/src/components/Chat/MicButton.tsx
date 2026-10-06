@@ -5,14 +5,16 @@ interface MicButtonProps {
   state: SpeechState;
   onClick: () => void;
   disabled?: boolean;
-  reason?: 'not-enabled' | 'no-backend' | 'streaming';
+  reason?: 'not-enabled' | 'no-backend' | 'streaming' | 'wake-mode';
 }
 
 export function MicButton({ state, onClick, disabled, reason }: MicButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const tooltipText =
-    reason === 'not-enabled'
+    reason === 'wake-mode'
+      ? 'Wake mode is active'
+      : reason === 'not-enabled'
       ? 'Enable in Settings'
       : reason === 'no-backend'
         ? 'Speech backend not configured'

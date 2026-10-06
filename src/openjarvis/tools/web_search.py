@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 from urllib.parse import urljoin
 
@@ -28,6 +29,7 @@ from openjarvis.core.registry import ToolRegistry
 from openjarvis.core.types import ToolResult
 from openjarvis.security.ssrf import check_ssrf
 from openjarvis.tools._stubs import BaseTool, ToolSpec
+from openjarvis.tools.web_sources import source_records
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +115,26 @@ class WebSearchTool(BaseTool):
             )
             requested = "auto"
         self._engine = requested
+
+    def _safe_error(self, error: object) -> str:
+        """Bound and redact provider errors before exposing them to clients.
+
+        Provider SDKs occasionally echo request headers or query parameters in
+        exception text. Search diagnostics are useful to the UI, but they must
+        never become a way to leak a configured API credential.
+        """
+        message = str(error)
+        for secret in (
+            self._api_key,
+            self._youcom_api_key,
+            self._serply_api_key,
+        ):
+            if secret and len(secret) >= 4:
+                message = message.replace(secret, "[redacted]")
+        message = re.sub(
+            r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [redacted]", message
+        )
+        return message[:500]
 
     def _resolve_engine(self) -> str:
         """Resolve ``auto`` to a concrete engine from what the env can serve.
@@ -296,12 +318,22 @@ class WebSearchTool(BaseTool):
         keyed = bool(self._youcom_api_key)
         url, headers = self._youcom_request(keyed)
         try:
-            response = httpx.get(
-                url,
-                params={"query": query, "count": max_results},
-                headers=headers,
-                timeout=30.0,
-            )
+            # Retry only failures establishing a connection. Never retry a
+            # response/rate-limit error or disable certificate verification.
+            attempts = 0
+            while True:
+                attempts += 1
+                try:
+                    response = httpx.get(
+                        url,
+                        params={"query": query, "count": max_results},
+                        headers=headers,
+                        timeout=httpx.Timeout(20, connect=8),
+                    )
+                    break
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    if attempts >= 2:
+                        raise
             response.raise_for_status()
             payload = response.json()
         except httpx.HTTPStatusError as exc:
@@ -323,6 +355,14 @@ class WebSearchTool(BaseTool):
                 "num_results": count,
                 "engine": "youcom",
                 "youcom_tier": "keyed" if keyed else "keyless",
+                "connection_attempts": attempts,
+                "sources": source_records(
+                    [
+                        item
+                        for section in ("web", "news")
+                        for item in (payload.get("results") or {}).get(section) or []
+                    ]
+                ),
             },
         )
 
@@ -426,6 +466,9 @@ class WebSearchTool(BaseTool):
 
         formatted, count = self._format_serply_results(payload)
         metadata: dict[str, Any] = {"num_results": count, "engine": "serply"}
+        metadata["sources"] = source_records(
+            payload.get("results") or [], url_key="link"
+        )
         if self._serply_location:
             metadata["serply_location"] = self._serply_location
         return ToolResult(
@@ -435,11 +478,13 @@ class WebSearchTool(BaseTool):
             metadata=metadata,
         )
 
-    def _duckduckgo_search(self, query: str, max_results: int) -> str:
+    def _duckduckgo_search(
+        self, query: str, max_results: int
+    ) -> tuple[str, list[dict[str, str]]]:
         """Search using DuckDuckGo as fallback."""
         from ddgs import DDGS
 
-        ddgs = DDGS()
+        ddgs = DDGS(timeout=10)
         raw_results = list(ddgs.text(query, max_results=max_results))
         results = []
         for r in raw_results:
@@ -449,7 +494,7 @@ class WebSearchTool(BaseTool):
             results.append(f"### {title}\nSource: {url}\nSummary: {snippet}")
 
         formatted = "\n\n---\n\n".join(results)
-        return formatted
+        return formatted, source_records(raw_results, url_key="href")
 
     def execute(self, **params: Any) -> ToolResult:
         query = params.get("query", "")
@@ -481,6 +526,7 @@ class WebSearchTool(BaseTool):
                             "url": url,
                             "mode": "fetch",
                             "extractor": "youcom_contents",
+                            "sources": source_records([{"url": url}]),
                         },
                     )
             try:
@@ -489,7 +535,12 @@ class WebSearchTool(BaseTool):
                     tool_name="web_search",
                     content=content or "No content found at URL.",
                     success=True,
-                    metadata={"url": url, "mode": "fetch", "extractor": "local"},
+                    metadata={
+                        "url": url,
+                        "mode": "fetch",
+                        "extractor": "local",
+                        "sources": source_records([{"url": url}]),
+                    },
                 )
             except Exception as exc:
                 return ToolResult(
@@ -511,9 +562,9 @@ class WebSearchTool(BaseTool):
                 return self._serply_search(query, max_results)
             return self._tavily_search(query, max_results)
         except _WebSearchEngineError as exc:
-            reason = str(exc)
+            reason = self._safe_error(exc)
         except Exception as exc:  # engine SDKs raise their own error types
-            reason = f"{type(exc).__name__}: {exc}"
+            reason = self._safe_error(f"{type(exc).__name__}: {exc}")
 
         # Falling back is a degradation in result quality, so say so at WARNING
         # rather than DEBUG — a typo'd key used to look like a quiet install.
@@ -555,6 +606,7 @@ class WebSearchTool(BaseTool):
                 "num_results": len(results),
                 "engine": "tavily",
                 "credits": (response.get("usage") or {}).get("credits"),
+                "sources": source_records(results),
             },
         )
 
@@ -575,7 +627,9 @@ class WebSearchTool(BaseTool):
                 metadata["fallback_reason"] = reason
 
         try:
-            formatted = self._duckduckgo_search(query, max_results)
+            formatted, sources = self._duckduckgo_search(query, max_results)
+            metadata["sources"] = sources
+            metadata["num_results"] = len(sources)
             return ToolResult(
                 tool_name="web_search",
                 content=formatted or "No results found.",
@@ -583,6 +637,7 @@ class WebSearchTool(BaseTool):
                 metadata=metadata,
             )
         except ImportError:
+            metadata["fallback_error"] = "ddgs is not installed"
             return ToolResult(
                 tool_name="web_search",
                 content=(
@@ -593,9 +648,11 @@ class WebSearchTool(BaseTool):
                 metadata=metadata,
             )
         except Exception as exc:
+            safe_error = self._safe_error(exc)
+            metadata["fallback_error"] = safe_error
             return ToolResult(
                 tool_name="web_search",
-                content=f"Search error: {exc}",
+                content=f"Search error: {safe_error}",
                 success=False,
                 metadata=metadata,
             )

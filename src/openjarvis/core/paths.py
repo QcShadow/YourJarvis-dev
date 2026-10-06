@@ -120,3 +120,9 @@ def get_cache_dir() -> Path:
     directory instead of scattering across ``~/.cache``.
     """
     return get_config_dir() / "cache"
+
+
+def get_resource_dir() -> Path:
+    """Models/runtimes may live outside a portable client's private state."""
+    root = os.environ.get("OPENJARVIS_RESOURCE_ROOT")
+    return Path(root).expanduser().resolve() if root else get_config_dir()

@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "profile": "jarvis-multilingual",
+  "language": "zh",
+  "runtime": "qwen3-tts-0.6b-base-cpu",
+  "reference": "models/piper/jarvis-high/reference.wav"
+}

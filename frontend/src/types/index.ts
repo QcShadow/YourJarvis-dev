@@ -42,12 +42,21 @@ export interface ToolCallInfo {
   status: 'running' | 'success' | 'error';
   result?: string;
   latency?: number;
+  metadata?: {
+    engine?: string;
+    degraded?: boolean;
+    fallback_from?: string;
+    fallback_reason?: string;
+    fallback_error?: string;
+    sources?: Array<{url: string; title: string; domain?: string; authority?: 'official' | 'academic' | 'institutional' | 'general'; retrieved_at?: string}>;
+  };
 }
 
 export interface TokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  estimated?: boolean;
 }
 
 export interface MessageTelemetry {
@@ -121,6 +130,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   toolCalls?: ToolCallInfo[];
+  sourceContext?: Array<{ url: string; title: string; retrieved_at?: string }>;
   researchTraces?: ResearchSearchTrace[];
   researchSources?: ResearchSource[];
   isResearch?: boolean;

@@ -26,6 +26,22 @@ from openjarvis.engine._stubs import StreamChunk
 
 logger = logging.getLogger(__name__)
 
+
+def _ollama_message_dicts(messages: Sequence[Message]) -> list[dict[str, Any]]:
+    """All inference paths must serialize prior tool arguments as objects."""
+    serialized = messages_to_dicts(messages)
+    for message in serialized:
+        for call in message.get("tool_calls", []):
+            function = call.get("function", {})
+            arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    function["arguments"] = json.loads(arguments)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+    return serialized
+
+
 # Qwen3 treats ``/think`` and ``/no_think`` as soft-switch control tokens that
 # toggle reasoning mode. Small models (e.g. qwen3:14b) fed a multi-line prompt
 # sometimes emit one of these as the sole tool argument, e.g.
@@ -88,6 +104,7 @@ def _ollama_request_options(
     temperature: float,
     max_tokens: int,
     kwargs: Dict[str, Any],
+    model: str = "",
 ) -> Dict[str, Any]:
     """Build Ollama ``options`` dict from generate/stream kwargs."""
     options: Dict[str, Any] = {
@@ -100,6 +117,24 @@ def _ollama_request_options(
         options["num_ctx"] = _default_num_ctx()
     if kwargs.get("num_gpu") is not None:
         options["num_gpu"] = int(kwargs["num_gpu"])
+    if kwargs.get("num_thread") is not None:
+        options["num_thread"] = int(kwargs["num_thread"])
+    for key in ("top_p", "top_k", "min_p", "frequency_penalty", "presence_penalty"):
+        if kwargs.get(key) is not None:
+            options[key] = kwargs[key]
+    if kwargs.get("repetition_penalty") is not None:
+        options["repeat_penalty"] = kwargs["repetition_penalty"]
+    if model:
+        from openjarvis.core.model_scheduler import image_lease
+
+        lease = image_lease()
+        if lease.get("main_model") == model and lease.get("main_device") in {
+            "cpu",
+            "gpu",
+        }:
+            options["num_gpu"] = 0 if lease["main_device"] == "cpu" else -1
+            options["num_thread"] = 4
+            options["num_ctx"] = lease.get("num_ctx", options["num_ctx"])
     return options
 
 
@@ -120,12 +155,19 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         host: str | None = None,
         *,
         timeout: float = 1800.0,
+        num_ctx: int = 0,
+        num_gpu: int = -1,
     ) -> None:
         # Priority: explicit host (from config.toml) > OLLAMA_HOST env var > default
         if host is None:
             env_host = os.environ.get("OLLAMA_HOST")
             host = env_host or self._DEFAULT_HOST
         self._host = host.rstrip("/")
+        self._runtime_options = {}
+        if num_ctx > 0:
+            self._runtime_options["num_ctx"] = num_ctx
+        if num_gpu >= 0:
+            self._runtime_options["num_gpu"] = num_gpu
         # Used by the shared async streaming plumbing (AsyncHTTPEngineMixin) so a
         # wedged token read is bounded by ``timeout`` instead of hanging the
         # single event loop for the httpx default.
@@ -147,25 +189,16 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         max_tokens: int = 1024,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        msg_dicts = messages_to_dicts(messages)
-        # Ollama expects tool_call arguments as dicts, not JSON strings
-        for md in msg_dicts:
-            for tc in md.get("tool_calls", []):
-                fn = tc.get("function", {})
-                args = fn.get("arguments")
-                if isinstance(args, str):
-                    try:
-                        fn["arguments"] = json.loads(args)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+        msg_dicts = _ollama_message_dicts(messages)
         payload: Dict[str, Any] = {
             "model": model,
             "messages": msg_dicts,
             "stream": False,
             "options": _ollama_request_options(
+                model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                kwargs=kwargs,
+                kwargs={**self._runtime_options, **kwargs},
             ),
         }
         # Disable extended thinking by default (Qwen3.5 etc.).
@@ -175,6 +208,8 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             payload["think"] = False
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
+        if kwargs.get("keep_alive") is not None:
+            payload["keep_alive"] = kwargs["keep_alive"]
         # Pass tools if provided
         tools = kwargs.get("tools")
         if tools:
@@ -282,12 +317,13 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
     ) -> AsyncIterator[str]:
         payload: Dict[str, Any] = {
             "model": model,
-            "messages": messages_to_dicts(messages),
+            "messages": _ollama_message_dicts(messages),
             "stream": True,
             "options": _ollama_request_options(
+                model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                kwargs=kwargs,
+                kwargs={**self._runtime_options, **kwargs},
             ),
         }
         # Mirror generate()'s default: disable extended thinking unless the
@@ -298,6 +334,8 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             payload["think"] = False
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
+        if kwargs.get("keep_alive") is not None:
+            payload["keep_alive"] = kwargs["keep_alive"]
         try:
             # ASYNC streaming: ``httpx.AsyncClient`` + ``aiter_lines`` never
             # blocks the event loop between tokens (the previous SYNC
@@ -368,38 +406,34 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
         response. Falls back to a tools-less retry on 400 (mirrors
         ``generate()``'s behaviour for models that don't support tools).
         """
-        msg_dicts = messages_to_dicts(messages)
-        for md in msg_dicts:
-            for tc in md.get("tool_calls", []):
-                fn = tc.get("function", {})
-                args = fn.get("arguments")
-                if isinstance(args, str):
-                    try:
-                        fn["arguments"] = json.loads(args)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+        msg_dicts = _ollama_message_dicts(messages)
 
         payload: Dict[str, Any] = {
             "model": model,
             "messages": msg_dicts,
             "stream": True,
             "options": _ollama_request_options(
+                model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                kwargs=kwargs,
+                kwargs={**self._runtime_options, **kwargs},
             ),
         }
         if "think" not in kwargs:
             payload["think"] = False
         elif kwargs["think"] is not None:
             payload["think"] = kwargs["think"]
+        if kwargs.get("keep_alive") is not None:
+            payload["keep_alive"] = kwargs["keep_alive"]
 
         tools = kwargs.get("tools")
         if tools:
             payload["tools"] = tools
 
         async for chunk in self._run_stream(
-            payload, messages, retry_without_tools=bool(tools)
+            payload,
+            messages,
+            retry_without_tools=bool(tools) and not kwargs.get("require_tools", False),
         ):
             yield chunk
 
@@ -439,6 +473,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     self._raise_stream_http_error(resp.status_code, resp.text)
 
                 finish_reason: str | None = None
+                next_tool_index = 0
                 async for line in resp.aiter_lines():
                     if not line.strip():
                         continue
@@ -475,7 +510,11 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                                 if isinstance(raw_args, dict)
                                 else str(raw_args)
                             )
-                            i = len(fragments)
+                            # Complete calls may arrive in separate NDJSON
+                            # chunks. Indices must be unique for the whole
+                            # response, not restart at zero for each chunk.
+                            i = next_tool_index
+                            next_tool_index += 1
                             fragments.append(
                                 {
                                     "index": i,

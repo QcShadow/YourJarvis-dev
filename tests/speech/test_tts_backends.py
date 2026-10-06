@@ -401,6 +401,38 @@ def test_kokoro_reuses_model_and_honors_path_and_device(monkeypatch):
     assert pipeline_models[0][1] is pipeline_models[1][1]
 
 
+def test_kokoro_mandarin_pronounces_jarvis_as_chinese_name(monkeypatch):
+    """The visible brand stays JARVIS while Mandarin speech says 贾维斯."""
+    import sys
+    import types
+
+    import numpy as np
+
+    from openjarvis.speech.kokoro_tts import KokoroTTSBackend
+
+    spoken_text = []
+
+    class FakePipeline:
+        def __call__(self, text, voice, speed):
+            spoken_text.append(text)
+            yield (None, None, np.zeros(240, dtype=np.float32))
+
+    def _fake_sf_write(buf, _samples, _sr, format=None):  # noqa: A002
+        buf.write(b"FAKE_AUDIO_BYTES")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "soundfile",
+        types.SimpleNamespace(write=_fake_sf_write),
+    )
+    backend = KokoroTTSBackend()
+    monkeypatch.setattr(backend, "_ensure_pipeline", lambda _lang: FakePipeline())
+
+    backend.synthesize("我是 JARVIS。", voice_id="zf_xiaoxiao")
+
+    assert spoken_text == ["我是 贾维斯。"]
+
+
 # ---------------------------------------------------------------------------
 # OpenAI TTS backend tests
 # ---------------------------------------------------------------------------

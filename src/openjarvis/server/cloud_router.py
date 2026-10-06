@@ -310,11 +310,15 @@ async def stream_local(
     messages: Sequence[Message],
     temperature: float = 0.7,
     max_tokens: int = 1024,
+    *,
+    num_ctx: int | None = None,
 ) -> AsyncIterator[str]:
     """Stream tokens directly from Ollama, bypassing the engine system."""
+    from openjarvis.engine.ollama import _ollama_message_dicts
+
     payload = {
         "model": model,
-        "messages": _to_openai_msgs(messages),
+        "messages": _ollama_message_dicts(messages),
         "stream": True,
         # Disable extended thinking (Qwen3.5 etc.) — when enabled all tokens
         # go into the 'thinking' field and 'content' stays empty.
@@ -324,6 +328,8 @@ async def stream_local(
             "num_predict": max_tokens,
         },
     }
+    if num_ctx is not None:
+        payload["options"]["num_ctx"] = num_ctx
     host = _ollama_host()
     async with httpx.AsyncClient(timeout=300) as client:
         async with client.stream("POST", f"{host}/api/chat", json=payload) as resp:

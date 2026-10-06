@@ -33,6 +33,13 @@ except ImportError:
     pass
 
 try:
+    import openjarvis.tools.browser_open  # noqa: F401
+    import openjarvis.tools.list_files  # noqa: F401
+    import openjarvis.tools.system_time  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import openjarvis.tools.web_search  # noqa: F401
 except ImportError:
     pass
@@ -124,6 +131,11 @@ except ImportError:
 
 try:
     import openjarvis.tools.image_tool  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.tools.local_image_generate  # noqa: F401
 except ImportError:
     pass
 

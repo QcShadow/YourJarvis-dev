@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { synthesizeSpeech, fetchTtsHealth } from './api';
+import { synthesizeSpeech, fetchTtsHealth, apiFetch } from './api';
+import { PcmPlayer } from './pcm-player';
+import { defaultVoiceSettings, responseLanguage, selectedVoiceProfile } from './voice-settings';
 
 export type TtsState = 'idle' | 'loading' | 'speaking';
 
@@ -34,6 +36,26 @@ let objectUrl: string | null = null;
 let controller: AbortController | null = null;
 let token = 0;
 let healthProbe: Promise<void> | null = null;
+let pcmPlayer: PcmPlayer | null = null;
+
+function savedVoicePreferences(): { voiceId?: string; speed?: number; voiceProfile?: string; outputLanguage?: string; characterId?: string } {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('openjarvis-settings');
+    if (!raw) return {};
+    const settings = JSON.parse(raw) as { voiceId?: unknown; voiceSpeed?: unknown };
+    const voiceSettings = { ...defaultVoiceSettings, ...settings };
+    return {
+      voiceId: typeof settings.voiceId === 'string' ? settings.voiceId : undefined,
+      speed: typeof settings.voiceSpeed === 'number' ? settings.voiceSpeed : undefined,
+      voiceProfile: selectedVoiceProfile(voiceSettings),
+      outputLanguage: responseLanguage(voiceSettings),
+      characterId: voiceSettings.characterId,
+    };
+  } catch {
+    return {};
+  }
+}
 
 /** Only a stream ending in the active conversation may trigger autoplay. */
 export function shouldAutoplayFinishedReply(
@@ -52,6 +74,10 @@ export function shouldAutoplayFinishedReply(
 }
 
 function teardown(): void {
+  if (pcmPlayer) {
+    pcmPlayer.stop();
+    pcmPlayer = null;
+  }
   if (audio) {
     // Detach first: clearing src re-runs the media load algorithm, which fails
     // on an empty source and dispatches an `error` event. With the handler
@@ -112,7 +138,40 @@ export const useTtsStore = create<TtsStore>((set, get) => ({
     controller = ac;
 
     try {
-      const blob = await synthesizeSpeech(trimmed, { signal: ac.signal });
+      const voice = savedVoicePreferences();
+      if (voice.voiceProfile === 'jarvis-multilingual' && voice.outputLanguage === 'zh') {
+        const player = new PcmPlayer();
+        pcmPlayer = player;
+        const response = await apiFetch('/v1/speech/stream', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
+          body: JSON.stringify({ text: trimmed, voice_profile: voice.voiceProfile,
+            character_id: voice.characterId, output_language: 'zh', speed: voice.speed }),
+        });
+        if (mine !== token) { player.stop(); return; }
+        if (response.ok && response.body) {
+          if (response.headers.get('X-Voice-Id') !== 'jarvis-high') throw new Error('Unexpected streaming voice');
+          const rate = Number(response.headers.get('X-Sample-Rate'));
+          await player.play(response.body, rate, ac.signal, () => {
+            if (mine === token) set({ state: 'speaking' });
+          });
+          if (mine === token) {
+            teardown();
+            set({ state: 'idle', speakingId: null });
+          }
+          return;
+        }
+        player.stop();
+        pcmPlayer = null;
+        if (![404, 501, 503].includes(response.status)) throw new Error(`Speech streaming failed: ${response.status}`);
+      }
+      const blob = await synthesizeSpeech(trimmed, {
+        voiceId: voice.voiceId,
+        speed: voice.speed,
+        voiceProfile: voice.voiceProfile || defaultVoiceSettings.voiceProfileZh,
+        outputLanguage: voice.outputLanguage || 'zh',
+        characterId: voice.characterId || 'jarvis-local',
+        signal: ac.signal,
+      });
       if (mine !== token) return;
 
       const url = URL.createObjectURL(blob);

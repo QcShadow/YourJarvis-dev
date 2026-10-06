@@ -14,6 +14,10 @@ import { XRayFooter } from './XRayFooter';
 import { SpeakMessageButton } from './SpeakMessageButton';
 import type { ChatMessage } from '../../types';
 import { stripThinkTags } from '../../lib/message-text';
+import { WebSources } from './WebSources';
+import { webProvenance, normalizeSourceUrl } from '../../lib/web-provenance';
+import { useAppStore } from '../../lib/store';
+import { LocalImagePreview } from '../LocalImagePreview';
 
 interface Props {
   message: ChatMessage;
@@ -97,6 +101,8 @@ function CopyMessageButton({ content }: { content: string }) {
 }
 
 export function MessageBubble({ message, isLive = false }: Props) {
+  const zh = useAppStore((s) => s.settings.interfaceLanguage === 'zh-CN');
+  const provenance = useMemo(() => webProvenance(message.toolCalls, message.content, message.sourceContext), [message.toolCalls, message.content, message.sourceContext]);
   const isUser = message.role === 'user';
 
   const cleanContent = useMemo(() => stripThinkTags(message.content), [message.content]);
@@ -119,7 +125,7 @@ export function MessageBubble({ message, isLive = false }: Props) {
 
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end mb-4" data-i18n-ignore>
         <div
           className="max-w-[85%] px-4 py-2.5 text-sm leading-relaxed"
           style={{
@@ -166,13 +172,19 @@ export function MessageBubble({ message, isLive = false }: Props) {
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={rehypePlugins}
             components={{
+              img: ({ src, alt }) => <LocalImagePreview src={src} alt={alt} />,
               pre: CodeBlockPre,
+              a: ({ href, children, ...props }) => provenance.unmatched.has(normalizeSourceUrl(href || ''))
+                ? <span title={zh ? '无法与已记录检索来源对应' : 'Cannot be matched to recorded retrieval sources'} style={{ textDecoration: 'underline dotted', color: 'var(--color-text-secondary)' }}>{children} <small>{zh ? '［来源未对应］' : '[unmatched source]'}</small></span>
+                : <a {...props} href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
             }}
           >
             {cleanContent}
           </ReactMarkdown>
         </div>
       )}
+
+      <WebSources calls={message.toolCalls} content={cleanContent} inherited={message.sourceContext} />
 
       {/* Footer: copy + read aloud + x-ray */}
       <div className="flex items-center gap-2 mt-1.5">

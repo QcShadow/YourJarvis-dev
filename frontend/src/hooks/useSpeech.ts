@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { transcribeAudio, fetchSpeechHealth } from '../lib/api';
+import { useAppStore } from '../lib/store';
 
 export type SpeechState = 'idle' | 'recording' | 'transcribing';
 
@@ -10,6 +11,7 @@ export function useSpeech() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const recognitionLanguage = useAppStore((s) => s.settings.recognitionLanguage);
 
   // Check if speech backend is available on mount
   useEffect(() => {
@@ -65,7 +67,7 @@ export function useSpeech() {
         chunksRef.current = [];
 
         try {
-          const result = await transcribeAudio(blob);
+          const result = await transcribeAudio(blob, 'recording.webm', recognitionLanguage);
           setState('idle');
           resolve(result.text);
         } catch (err) {
@@ -78,7 +80,7 @@ export function useSpeech() {
 
       recorder.stop();
     });
-  }, []);
+  }, [recognitionLanguage]);
 
   return {
     state,
