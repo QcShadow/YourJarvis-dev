@@ -49,6 +49,7 @@ internal sealed class JarvisWindow : Form
     private readonly string root = AppDomain.CurrentDomain.BaseDirectory;
     private readonly WebView2 web = new WebView2();
     private readonly Label loading = new Label();
+    private readonly FlowLayoutPanel recovery = new FlowLayoutPanel();
     private readonly NotifyIcon tray = new NotifyIcon();
     private readonly ToolStripMenuItem showItem = new ToolStripMenuItem();
     private readonly ToolStripMenuItem pauseItem = new ToolStripMenuItem();
@@ -90,6 +91,14 @@ internal sealed class JarvisWindow : Form
         loading.Text = "正在启动贾维斯…";
         Controls.Add(web);
         Controls.Add(loading);
+        recovery.Dock=DockStyle.Bottom; recovery.Height=64; recovery.Padding=new Padding(24,12,0,0); recovery.Visible=false;
+        var retry=new Button {Text="重试启动",Width=120,Height=36};
+        var repair=new Button {Text="修复安装",Width=120,Height=36};
+        var openLogs=new Button {Text="打开日志目录",Width=150,Height=36};
+        retry.Click+=async delegate {await StartAssistant();};
+        repair.Click+=async delegate {try {await RunInstaller();await StartAssistant();} catch(Exception ex) {loading.Text=ex.Message;}};
+        openLogs.Click+=delegate {Directory.CreateDirectory(Path.Combine(root,"logs"));Process.Start(new ProcessStartInfo(Path.Combine(root,"logs")){UseShellExecute=true});};
+        recovery.Controls.AddRange(new Control[]{retry,repair,openLogs}); Controls.Add(recovery);
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[] { showItem, pauseItem, updateItem, new ToolStripSeparator(), quitItem });
         showItem.Click += delegate { ShowAssistant(); };
@@ -168,33 +177,35 @@ internal sealed class JarvisWindow : Form
         if (Uri.TryCreate(address, UriKind.Absolute, out uri) && (uri.Scheme == "http" || uri.Scheme == "https"))
             Process.Start(new ProcessStartInfo(address) { UseShellExecute = true });
     }
+    private async Task RunInstaller()
+    {
+        var info=new ProcessStartInfo(Path.Combine(root,"JARVIS-Install.exe"),"--no-launch") {WorkingDirectory=root,UseShellExecute=true};
+        using(var process=Process.Start(info)) {await Task.Run((Action)process.WaitForExit);if(process.ExitCode!=0) throw new Exception("安装尚未完成。点击下方“修复安装”继续。");}
+    }
     private async Task StartAssistant()
     {
         try
         {
+            recovery.Visible=false; loading.Visible=true; web.Visible=false; loading.Text="正在启动贾维斯…";
             if (!File.Exists(Path.Combine(root, "config.toml"))
-                || !File.Exists(Path.Combine(root, "src", ".venv", "Scripts", "python.exe")))
+                || !File.Exists(Path.Combine(root, "src", ".venv", "Scripts", "python.exe"))
+                || !File.Exists(Path.Combine(root,"install-complete.json")))
             {
-                var setup = new ProcessStartInfo(Path.Combine(root, "JARVIS-Install.exe"), "--no-launch") {
-                    WorkingDirectory = root, UseShellExecute = true
-                };
-                using (var configuration = Process.Start(setup))
-                {
-                    await Task.Run((Action)configuration.WaitForExit);
-                    if (configuration.ExitCode != 0)
-                        throw new Exception("安装未完成。请打开 JARVIS-Install.exe 继续安装或修复。");
-                }
+                await RunInstaller();
             }
             var start = new ProcessStartInfo("powershell.exe",
                 "-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(root, "start-gui.ps1") + "\" -NoBrowser") {
                 WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput=true, RedirectStandardError=true,
+                StandardOutputEncoding=new System.Text.UTF8Encoding(false), StandardErrorEncoding=new System.Text.UTF8Encoding(false)
             };
             using (var process = Process.Start(start))
             {
-                await Task.Run((Action)process.WaitForExit);
-                if (process.ExitCode != 0) throw new Exception(
-                    "Backend startup failed. See logs\\gui-server.stderr.log.");
+                var readOut=process.StandardOutput.ReadToEndAsync(); var readError=process.StandardError.ReadToEndAsync();
+                await Task.Run((Action)process.WaitForExit); string detail=await readError; string normal=await readOut;
+                Log("Backend startup: "+normal+Environment.NewLine+detail);
+                if (process.ExitCode != 0) throw new Exception("后端启动未完成。点击“修复安装”重试，详细原因已保存到 desktop.log。\n"+(detail.Length>600?detail.Substring(detail.Length-600):detail));
             }
             Directory.CreateDirectory(Path.Combine(root, "data", "desktop"));
             var env = await CoreWebView2Environment.CreateAsync(null,
@@ -248,7 +259,8 @@ internal sealed class JarvisWindow : Form
         {
             Log("Startup error: " + error.ToString());
             loading.Text = (english ? "JARVIS could not start.\n" : "贾维斯启动失败。\n") + error.Message
-                + "\n" + Path.Combine(root, "logs", "gui-server.stderr.log");
+                + "\n" + Path.Combine(root, "logs", "desktop.log");
+            recovery.Visible=true; recovery.BringToFront();
         }
     }
     private void Log(string message)
@@ -309,7 +321,7 @@ internal sealed class JarvisWindow : Form
             var progress = new Progress<int>(value => tray.BalloonTipText = (english ? "Downloading... " : "正在下载… ") + value + "%");
             string path = await JarvisUpdateChecker.DownloadAsync(root, update, progress);
             MessageBox.Show((english ? "Update downloaded to:\n" : "更新包已下载到：\n") + path
-                + (english ? "\n\nClose JARVIS, then extract it over the program files. Keep data, models and logs." : "\n\n请关闭 JARVIS 后解压覆盖程序文件；保留 data、models 和 logs。"),
+                + (english ? "\n\nClose JARVIS, run the installer, and choose the existing installation folder." : "\n\n请从托盘退出 JARVIS，运行下载的安装 EXE，选择原安装目录升级。现有配置和数据保留。"),
                 "JARVIS", MessageBoxButtons.OK, MessageBoxIcon.Information);
         } catch (Exception error) {
             MessageBox.Show((english ? "Update download failed:\n" : "更新下载失败：\n") + error.Message,
@@ -319,6 +331,10 @@ internal sealed class JarvisWindow : Form
     private async Task Quit()
     {
         await StopListening();
+        try {
+            var stop=new ProcessStartInfo("powershell.exe","-NoLogo -NoProfile -ExecutionPolicy Bypass -File \""+Path.Combine(root,"stop-gui.ps1")+"\"") {WorkingDirectory=root,UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden};
+            using(var process=Process.Start(stop)) await Task.Run((Action)process.WaitForExit);
+        } catch(Exception error) {Log("Backend shutdown: "+error.Message);}
         exiting = true;
         tray.Visible = false;
         Close();

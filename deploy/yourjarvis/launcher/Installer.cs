@@ -45,7 +45,7 @@ internal sealed class InstallWizard : Form
     private readonly Label heading = new Label(), subtitle = new Label(), status = new Label(), elapsed = new Label();
     private readonly Button back = new Button(), next = new Button(), close = new Button(), browse = new Button(), logs = new Button();
     private readonly TextBox directory = new TextBox(), model = new TextBox(), url = new TextBox(), key = new TextBox(), output = new TextBox();
-    private readonly ComboBox profile = new ComboBox(), voice = new ComboBox();
+    private readonly ComboBox profile = new ComboBox(), voice = new ComboBox(), channel = new ComboBox();
     private readonly CheckBox preserve = new CheckBox(), shortcut = new CheckBox(), startAfter = new CheckBox();
     private readonly Label hint = new Label(), summary = new Label();
     private readonly ProgressBar progress = new ProgressBar();
@@ -59,7 +59,7 @@ internal sealed class InstallWizard : Form
     public InstallWizard(string packageRoot, string[] args)
     {
         source = packageRoot; root = source; noLaunch = args.Contains("--no-launch");
-        Text = "JARVIS 0.1.2 · 安装向导";
+        Text = "JARVIS 0.1.3 · 安装向导";
         Font = new Font("Microsoft YaHei UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 650); MinimumSize = Size; MaximizeBox = false;
@@ -86,14 +86,16 @@ internal sealed class InstallWizard : Form
         directory.TextChanged += delegate { preserve.Checked = File.Exists(Path.Combine(directory.Text, "config.toml")); preserve.Enabled = preserve.Checked; };
         preserve.Checked = File.Exists(Path.Combine(source, "config.toml")); preserve.Enabled = preserve.Checked;
         shortcut.Text = "在桌面创建 JARVIS 快捷方式"; shortcut.SetBounds(24, 294, 680, 30); shortcut.Checked = true;
+        channel.DropDownStyle=ComboBoxStyle.DropDownList; channel.SetBounds(160,346,550,32);
+        channel.Items.AddRange(new object[]{"Gitee 优先 · 国内推荐，失败自动切换 GitHub", "GitHub 优先 · 失败自动切换 Gitee"}); channel.SelectedIndex=0;
         profile.DropDownStyle = ComboBoxStyle.DropDownList; profile.SetBounds(160, 28, 550, 32);
-        profile.Items.AddRange(new object[] { "轻量本地模型 · 推荐先试用，约 0.4 GB，无需 API 密钥", "平衡本地模型 · 约 1.4 GB，建议 8 GB 以上内存", "连接兼容 API · 填写服务商或远程服务提供的资料" }); profile.SelectedIndex = 0;
+        profile.Items.AddRange(new object[] { "轻量本地模型 · 推荐，约 0.4 GB，提供国内镜像", "使用已安装的本机模型 · 请填写模型名称", "连接兼容 API · 填写服务商或远程服务提供的资料" }); profile.SelectedIndex = 0;
         model.SetBounds(160, 98, 550, 30); model.Text = "qwen2.5:0.5b";
         url.SetBounds(160, 160, 550, 30); key.SetBounds(160, 222, 550, 30); key.UseSystemPasswordChar = true;
         voice.DropDownStyle = ComboBoxStyle.DropDownList; voice.SetBounds(160, 284, 550, 32);
         voice.Items.AddRange(new object[] { "先使用文字 · 推荐，下载较少；以后可开启语音", "中文男声 · 自动下载识别与声音资源", "中文女声 · 自动下载识别与声音资源", "English · 自动下载英文识别与声音资源" }); voice.SelectedIndex = args.Contains("--voice") ? 1 : 0;
         hint.SetBounds(24, 338, 688, 64); hint.ForeColor = Color.FromArgb(75, 88, 103);
-        profile.SelectedIndexChanged += delegate { model.Text = profile.SelectedIndex == 0 ? "qwen2.5:0.5b" : profile.SelectedIndex == 1 ? "qwen3:1.7b" : ""; SetFields(); };
+        profile.SelectedIndexChanged += delegate { model.Text = profile.SelectedIndex == 0 ? "qwen2.5:0.5b" : ""; SetFields(); };
         summary.SetBounds(24, 24, 688, 292);
         startAfter.Text = "安装成功后打开 JARVIS"; startAfter.SetBounds(24, 340, 650, 30); startAfter.Checked = !noLaunch;
         stages.SetBounds(24, 20, 688, 172); stages.BorderStyle = BorderStyle.None; stages.ItemHeight = 26; stages.Enabled = false;
@@ -121,8 +123,8 @@ internal sealed class InstallWizard : Form
         if (page == 0)
         {
             heading.Text = "欢迎安装 JARVIS"; subtitle.Text = "1 选择安装位置  →  2 选择使用方案  →  3 确认  →  4 自动安装";
-            var intro = new Label { Left = 24, Top = 24, Width = 688, Height = 118, Text = "只需跟着这个窗口操作，向导会按顺序完成安装。\r\n\r\n请先完整解压 ZIP，不要直接在压缩包里运行。首次安装需要联网。\r\n无需安装 Python，也无需输入任何命令。" };
-            content.Controls.AddRange(new Control[] { intro, LabelAt("安装位置", 138), directory, browse, preserve, shortcut });
+            var intro = new Label { Left = 24, Top = 24, Width = 688, Height = 118, Text = "只需跟着这个窗口操作，向导会按顺序完成安装。\r\n\r\n运行环境和默认模型从项目发布地址下载，支持断点续传。\r\n首次安装请保持联网，无需安装 Python 或输入命令。" };
+            content.Controls.AddRange(new Control[] { intro, LabelAt("安装位置", 138), directory, browse, preserve, shortcut, LabelAt("下载来源",346), channel });
             next.Text = "下一步";
         }
         else if (page == 1)
@@ -216,7 +218,7 @@ internal sealed class InstallWizard : Form
         {
             await Task.Run((Action)CopyPackage);
             Directory.CreateDirectory(Path.Combine(root, "logs")); logPath = Path.Combine(root, "logs", "installer-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".log");
-            var request = new Dictionary<string, object> { {"profile", new[] {"lite","balanced","api"}[profile.SelectedIndex]}, {"model",model.Text.Trim()}, {"url",url.Text.Trim()}, {"key",key.Text}, {"voice",new[] {"text","zh","zh-female","en"}[voice.SelectedIndex]}, {"preserve",preserve.Checked}, {"shortcut",shortcut.Checked} };
+            var request = new Dictionary<string, object> { {"profile", new[] {"lite","custom-local","api"}[profile.SelectedIndex]}, {"model",model.Text.Trim()}, {"url",url.Text.Trim()}, {"key",key.Text}, {"voice",new[] {"text","zh","zh-female","en"}[voice.SelectedIndex]}, {"preserve",preserve.Checked}, {"shortcut",shortcut.Checked}, {"channel",channel.SelectedIndex==0?"gitee":"github"} };
             var info = new ProcessStartInfo("powershell.exe", "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + Quote(Path.Combine(root,"install-worker.ps1")) + " -Root " + Quote(root)) { WorkingDirectory=root, UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true, RedirectStandardOutput=true, RedirectStandardError=true, StandardOutputEncoding=new UTF8Encoding(false), StandardErrorEncoding=new UTF8Encoding(false) };
             worker = new Process { StartInfo=info };
             worker.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { Log(e.Data); };

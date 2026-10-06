@@ -2,6 +2,9 @@
 param(
     [switch] $NoBrowser
 )
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 . (Join-Path $PSScriptRoot 'env.ps1')
 
@@ -27,14 +30,14 @@ if ($launchConfig.engine -eq 'ollama') {
 
 if (-not (Test-JarvisGuiServer)) {
     $arguments = @(
-        'run', '--no-sync', '--project', ('"{0}"' -f $script:JarvisSource),
-        'jarvis', 'serve',
+        '-m', 'openjarvis.cli', '--quiet', 'serve',
         '--host', '127.0.0.1',
         '--port', '8000',
         '--engine', $launchConfig.engine,
-        '--agent', $launchConfig.agent
+        '--agent', $launchConfig.agent,
+        '--model', ('"{0}"' -f $launchConfig.model)
     )
-    $process = Start-Process -FilePath $script:JarvisUv `
+    $process = Start-Process -FilePath (Join-Path $script:JarvisSource '.venv\Scripts\python.exe') `
         -ArgumentList $arguments `
         -WorkingDirectory $script:JarvisRoot `
         -WindowStyle Hidden `

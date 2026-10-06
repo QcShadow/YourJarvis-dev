@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param()
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility')
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management')
 
 $root = $PSScriptRoot
 $pidFile = Join-Path $root 'logs\gui-server.pid'
@@ -18,7 +20,7 @@ if (-not [int]::TryParse($rawPid, [ref] $serverPid)) {
 $process = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
 if ($null -ne $process) {
     $processPath = $process.Path
-    if ($processPath -notlike '*python*.exe' -and $processPath -notlike '*uv.exe') {
+    if ($processPath -notin @((Join-Path $root 'src\.venv\Scripts\python.exe'),(Join-Path $root 'tools\uv\uv.exe'))) {
         throw "PID $serverPid is not a JARVIS server process; refusing to stop it."
     }
     # uv launches the Python API server as a child process. Stop the validated

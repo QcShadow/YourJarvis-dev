@@ -55,5 +55,5 @@ if ($command -in @('ask', 'chat')) {
     }
 }
 
-& $script:JarvisUv run --no-sync --project $script:JarvisSource jarvis @effectiveArgs
+& (Join-Path $script:JarvisSource '.venv\Scripts\python.exe') -m openjarvis.cli @effectiveArgs
 exit $LASTEXITCODE

@@ -70,19 +70,15 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             add(file, "src/" + file.relative_to(project).as_posix())
     for name in RUNTIME_FILES:
         add(share / "runtime" / name, name)
-    add(root / "tools/uv/uv.exe", "tools/uv/uv.exe")
     for name in (
         "install-jarvis.ps1",
         "install-jarvis.cmd",
         "install-worker.ps1",
-        "bootstrap.ps1",
-        "bootstrap.cmd",
-        "download-speech.ps1",
-        "download-speech.cmd",
     ):
         add(share / name, name)
     add(share / "configure_portable.py", "scripts/configure_portable.py")
-    add(share / "download_speech_assets.py", "scripts/download_speech_assets.py")
+    add(share / "smoke_installed.py", "scripts/smoke_installed.py")
+    add(share / "verify_voice.py", "scripts/verify_voice.py")
     add(share / "README.zh-CN.md", "使用说明.md")
     if desktop:
         # Generated UI assets are ignored by Git; a clean snapshot must build them.
@@ -102,8 +98,10 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             "app-version.json",
             "JARVIS-Install.exe",
             "JARVIS-Install.exe.config",
+            "JARVIS-Resources.exe",
         ):
             add(binaries / name, name)
+        add(binaries / "resources.json", "resources.json")
     add(share / "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md")
     if lite:
         relative = "models/ollama/manifests/registry.ollama.ai/library/qwen2.5/0.5b"

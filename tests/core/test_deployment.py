@@ -128,6 +128,8 @@ def test_package_excludes_owner_state_and_large_models(tmp_path):
         "download-speech.ps1",
         "download-speech.cmd",
         "download_speech_assets.py",
+        "smoke_installed.py",
+        "verify_voice.py",
         "README.zh-CN.md",
         "THIRD_PARTY_NOTICES.md",
     ):

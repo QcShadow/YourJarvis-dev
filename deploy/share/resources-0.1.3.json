@@ -1,0 +1,231 @@
+{
+  "format": 1,
+  "version": "0.1.3",
+  "pythonHome": "runtimes/python/cpython-3.12.14-windows-x86_64-none",
+  "baseUrls": [
+    "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.3",
+    "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+  ],
+  "packs": {
+    "python": {
+      "bytes": 21334789,
+      "sha256": "1e5787af32ba58ebe963f909988921f55378a1ef39a9e032e59e99a0992db55f",
+      "parts": [
+        {
+          "name": "python.zip.001",
+          "bytes": 21334789,
+          "sha256": "1e5787af32ba58ebe963f909988921f55378a1ef39a9e032e59e99a0992db55f"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-runtime/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "runtime-text": {
+      "bytes": 183658012,
+      "sha256": "a697609925477e228863b3cd176d34929083cc8217f20fddcf8544ae2ff2f183",
+      "parts": [
+        {
+          "name": "runtime-text.zip.001",
+          "bytes": 94371840,
+          "sha256": "2ea49e4c4049cb603daa2b2c4327258d78ddb9509991e8acb81bc18ea7ba4aca"
+        },
+        {
+          "name": "runtime-text.zip.002",
+          "bytes": 89286172,
+          "sha256": "798f9c0f1495144806ea60263fa812099efa19dcea25052ed67e7eaf34e07ead"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-runtime/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "runtime-voice": {
+      "bytes": 476650997,
+      "sha256": "ef443affafe4aadc3e5ff7c4dfc3a8214ad517326a909a309d146cba240b4289",
+      "parts": [
+        {
+          "name": "runtime-voice.zip.001",
+          "bytes": 94371840,
+          "sha256": "e400c2bef4e58ff2ba745781b8db1789a2a8d1be7b57cea02e5098148fc17fab"
+        },
+        {
+          "name": "runtime-voice.zip.002",
+          "bytes": 94371840,
+          "sha256": "76210624ddf399bbf10dd7bc7fa0b1635fc5e6b0264fbf897b741457748634d3"
+        },
+        {
+          "name": "runtime-voice.zip.003",
+          "bytes": 94371840,
+          "sha256": "09205f8364b5cfabfb088e762861194d196d1ae6c180613975632a32f3759090"
+        },
+        {
+          "name": "runtime-voice.zip.004",
+          "bytes": 94371840,
+          "sha256": "01815d7d2e3f0278b158eb4c3467840022ffc89ec83bfb6937db46a6d6e45c12"
+        },
+        {
+          "name": "runtime-voice.zip.005",
+          "bytes": 94371840,
+          "sha256": "2df8413fb50eba98307a14bc4cd87cbd64d31779d30ed0dd891e91114955cd2a"
+        },
+        {
+          "name": "runtime-voice.zip.006",
+          "bytes": 4791797,
+          "sha256": "2e57a34f3cf7d66a240869080ff3067cffd8fc7307fbbdcdabbbde7f4741d8a5"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-runtime/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "llm-lite": {
+      "bytes": 386168777,
+      "sha256": "a4c04dfcd519de91bbe0e5a25ebe2d5cce06a64d049ded14bb0b4978420cbef9",
+      "parts": [
+        {
+          "name": "llm-lite.zip.001",
+          "bytes": 94371840,
+          "sha256": "a95209d5441c9f6f443aee56f3e24801d0db6cbbc9e05b5be5000272b9f56028"
+        },
+        {
+          "name": "llm-lite.zip.002",
+          "bytes": 94371840,
+          "sha256": "80195dbc59dc90830af7cc005eaef8bf503593ff5b085ff1a542835f7fce0b68"
+        },
+        {
+          "name": "llm-lite.zip.003",
+          "bytes": 94371840,
+          "sha256": "50a8a21def2e9e4091beee7b4172b6ff60e0326508871062d3df5cdb4cb30481"
+        },
+        {
+          "name": "llm-lite.zip.004",
+          "bytes": 94371840,
+          "sha256": "63f163d2d9d5cde828a32367d7625b8164b205bdf0160b9161e14c5f036d5cc6"
+        },
+        {
+          "name": "llm-lite.zip.005",
+          "bytes": 8681417,
+          "sha256": "5eec188b0fdf2c6ff67fdb15613a8b69cab20d5d3f14cadb623bdcbbe9091c85"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "ollama-cpu": {
+      "bytes": 27107316,
+      "sha256": "d398d570e83a20341fb3932238b38e8400b4d978bc6fcd694be5c698cd7d0ebe",
+      "parts": [
+        {
+          "name": "ollama-cpu.zip.001",
+          "bytes": 27107316,
+          "sha256": "d398d570e83a20341fb3932238b38e8400b4d978bc6fcd694be5c698cd7d0ebe"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "speech-zh": {
+      "bytes": 471472307,
+      "sha256": "e72aeaf9ec40707d8dd86dc715f427f4797cb3eda4aa39581ec5388620c34221",
+      "parts": [
+        {
+          "name": "speech-zh.zip.001",
+          "bytes": 94371840,
+          "sha256": "a9b593c518dd58333a8f64baf5e6d2728958e6da7aeac4098bd3dff2436d6a3a"
+        },
+        {
+          "name": "speech-zh.zip.002",
+          "bytes": 94371840,
+          "sha256": "e5a75ccfb91e2174383e15119c4f7fa60e9355350630dcc0dcf504f59eb3f582"
+        },
+        {
+          "name": "speech-zh.zip.003",
+          "bytes": 94371840,
+          "sha256": "88c76d1058dbf6ca11234ee26d6ae7ad889f5321ef4e6ceb5dc38e6e8b974b3d"
+        },
+        {
+          "name": "speech-zh.zip.004",
+          "bytes": 94371840,
+          "sha256": "20311189f56bd3016d18756bbb42471489ab71ac80c66517c4fedb97a2fa1a27"
+        },
+        {
+          "name": "speech-zh.zip.005",
+          "bytes": 93984947,
+          "sha256": "508f6d1ebcdd68b471fc326855e4d1cc4b67df95bc7839d2c54a99b3ca3dacd3"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-speech/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "speech-en": {
+      "bytes": 447129510,
+      "sha256": "8fb7ca31bbeaf99b6b98919b1310e344880c533b7687ecfe90c88b1ca5902d85",
+      "parts": [
+        {
+          "name": "speech-en.zip.001",
+          "bytes": 94371840,
+          "sha256": "d8db4d34e3b1024eb3c723fe30c5ef99fd6fae69e8b29ebd91f3efe04518db2b"
+        },
+        {
+          "name": "speech-en.zip.002",
+          "bytes": 94371840,
+          "sha256": "d6093788c453f51474ba53751e60f285429f4f04f6c4b665cf81a594698aa0e9"
+        },
+        {
+          "name": "speech-en.zip.003",
+          "bytes": 94371840,
+          "sha256": "4a1da4c8d7bb7c2dea78d67896b17e2bc02c668674eb2d5ff9f73e0c9ab8a550"
+        },
+        {
+          "name": "speech-en.zip.004",
+          "bytes": 94371840,
+          "sha256": "fcb804277fd84e1c6edd97260c4662139389a4b9e24b0c80c613c3049fe562ff"
+        },
+        {
+          "name": "speech-en.zip.005",
+          "bytes": 69642150,
+          "sha256": "b8dde22ea0b81431168c61c92cc63aee8e65accc73cfdc3e5f7d8ab145a1b7de"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-speech/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    },
+    "webview2": {
+      "bytes": 212322004,
+      "sha256": "848c062c5a1ad3c4d394e8789fbb007b919a2b97ef79ae84a9708ca663fc801d",
+      "parts": [
+        {
+          "name": "webview2.zip.001",
+          "bytes": 94371840,
+          "sha256": "4aa694a3d2d6cecd3bda96f99179a5ac356581691aaad219b8a91d652aa03ab6"
+        },
+        {
+          "name": "webview2.zip.002",
+          "bytes": 94371840,
+          "sha256": "e0cc43b4aabd2c64627bc0aeccfb97c2ddd07cc5f4f1da8b5ee61297361cb001"
+        },
+        {
+          "name": "webview2.zip.003",
+          "bytes": 23578324,
+          "sha256": "b1ccfcf685e7c643e616304cc1de1022ee9e1d7665192b5ddbed018787028905"
+        }
+      ],
+      "baseUrls": [
+        "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.3",
+        "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3"
+      ]
+    }
+  }
+}

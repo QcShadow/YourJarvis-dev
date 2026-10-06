@@ -26,14 +26,22 @@ This archive uses the Apache-2.0 option; the full license text is retained in
 `src/LICENSE`. Copyright Astral Software Inc. See the upstream project for
 notices for its bundled dependencies.
 
-Python and optional pip packages are fetched separately by bootstrap, not
-redistributed as an existing Python virtual environment. Their upstream
-package metadata / licenses remain in the installed environment.
+Version 0.1.3 mirrors a dedicated Windows x64 CPython 3.12.14 distribution and
+clean, explicitly built text/voice dependency environments as immutable resource
+packs. CPython's LICENSE and dependency .dist-info metadata/licenses are retained.
+The installer rewrites only the environment's interpreter home and editable
+application source path for the recipient's chosen directory. No builder config,
+credentials, logs or personal state are included. Generated console entry points
+with builder paths are excluded; launch uses python -m openjarvis.cli.
+
+The CPU Ollama runtime is mirrored with its MIT LICENSE and bundled library
+notices. GPU-specific CUDA/Vulkan directories are excluded from the CPU pack.
 
 Optional Microsoft.Web.WebView2 SDK redistributable assemblies come from the
 Microsoft WebView2 SDK and are governed by Microsoft's SDK terms:
 https://www.nuget.org/packages/Microsoft.Web.WebView2/
-The separately installed WebView2 runtime remains a recipient prerequisite.
+The unmodified, Microsoft-signed Evergreen x64 standalone runtime installer is
+mirrored as an optional resource and installed only when the runtime is missing.
 
 The experimental movie-inspired Piper JARVIS voice, Qwen-TTS weights and their
 isolated runtime are not included in the default sharing presets or archive.

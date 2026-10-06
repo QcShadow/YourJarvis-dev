@@ -1,10 +1,7 @@
 ﻿[CmdletBinding()]
 param([Parameter(Mandatory=$true)][string] $Root)
 $ErrorActionPreference = 'Stop'
-# GUI parents may inherit a module path belonging to a different PowerShell.
-Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility')
-Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management')
-Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security')
+foreach ($module in @('Utility','Management','Security')) { Import-Module (Join-Path $PSHOME "Modules\Microsoft.PowerShell.$module") }
 [Console]::InputEncoding = New-Object Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
@@ -12,76 +9,63 @@ $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $Root = [IO.Path]::GetFullPath($Root)
-
+$channel = if ($request.channel -eq 'github') { 'github' } else { 'gitee' }
 function Step([int] $number, [string] $message) { [Console]::WriteLine("JARVIS_STEP|$number|$message") }
 function Run([string] $file, [string[]] $arguments) {
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
+    $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try { & $file @arguments 2>&1 | ForEach-Object { [Console]::WriteLine([string]$_) }; $code = $LASTEXITCODE }
     finally { $ErrorActionPreference = $previous }
-    if ($code -ne 0) { throw "安装命令失败（退出代码 $code）。请检查网络和下方日志后点击重试。" }
+    if ($code -ne 0) { throw "安装命令失败（退出代码 $code）。请按日志提示修改后重试，下载进度会保留。" }
 }
+function Resource([string] $name) { Run (Join-Path $Root 'JARVIS-Resources.exe') @($Root,(Join-Path $Root 'resources.json'),$name,$channel) }
 function Bridge([string] $action) {
     $request | ConvertTo-Json -Compress | & $python (Join-Path $Root 'scripts\configure_portable.py') --root $Root --action $action
     if ($LASTEXITCODE -ne 0) { throw '模型连接或配置检查未通过，请按日志提示修改后重试。' }
 }
-function Download([string] $url, [string] $target) {
-    $partial = $target + '.part'
-    for ($attempt = 1; $attempt -le 3; $attempt++) {
-        try {
-            [Console]::WriteLine("正在下载运行组件（第 $attempt 次尝试）…")
-            Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $partial -TimeoutSec 900
-            Move-Item -LiteralPath $partial -Destination $target -Force
-            return
-        } catch {
-            if ($attempt -eq 3) { throw '运行组件下载失败。请检查网络或代理后重试；已完成的安装步骤会保留。' }
-            Start-Sleep -Seconds 2
-        }
-    }
-}
 function Test-WebView {
-    try {
-        Add-Type -Path (Join-Path $Root 'Microsoft.Web.WebView2.Core.dll')
-        return [bool][Microsoft.Web.WebView2.Core.CoreWebView2Environment]::GetAvailableBrowserVersionString()
-    } catch { return $false }
+    try { Add-Type -Path (Join-Path $Root 'Microsoft.Web.WebView2.Core.dll'); return [bool][Microsoft.Web.WebView2.Core.CoreWebView2Environment]::GetAvailableBrowserVersionString() } catch { return $false }
 }
 $lock = $null
 try {
     Step 1 '检查安装包、目录权限和磁盘空间'
     if (-not [Environment]::Is64BitOperatingSystem) { throw '此安装包需要 64 位 Windows 10/11。' }
     $lock = [IO.File]::Open((Join-Path $Root '.installer.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
-    foreach ($file in @('env.ps1','tools\uv\uv.exe','src\pyproject.toml','src\uv.lock','scripts\configure_portable.py','JARVIS.exe')) {
-        if (-not (Test-Path -LiteralPath (Join-Path $Root $file))) { throw "安装包缺少 $file。请完整解压新版 ZIP 后重试。" }
+    foreach ($file in @('env.ps1','resources.json','JARVIS-Resources.exe','src\pyproject.toml','scripts\configure_portable.py','JARVIS.exe')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Root $file))) { throw "安装包缺少 $file。请重新运行新版 JARVIS-Setup.exe。" }
     }
-    if (Test-Path -LiteralPath (Join-Path $Root 'package-manifest.json')) {
-        $manifest = Get-Content -LiteralPath (Join-Path $Root 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($item in $manifest.files) {
-            $file = [IO.Path]::GetFullPath((Join-Path $Root $item.path))
-            if (-not $file.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '安装包清单路径无效。' }
-            if (-not (Test-Path -LiteralPath $file)) { throw "安装文件缺失：$($item.path)。请完整解压安装包。" }
-            $stream = [IO.File]::OpenRead($file)
-            $sha = [Security.Cryptography.SHA256]::Create()
-            try { $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
-            finally { $stream.Dispose(); $sha.Dispose() }
-            if ($hash -ne $item.sha256) { throw "文件校验失败：$($item.path)。请重新下载并解压安装包。" }
-        }
+    $manifest = Get-Content -LiteralPath (Join-Path $Root 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($item in $manifest.files) {
+        $file = [IO.Path]::GetFullPath((Join-Path $Root $item.path))
+        if (-not $file.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw '安装包清单路径无效。' }
+        if (-not (Test-Path -LiteralPath $file)) { throw "安装文件缺失：$($item.path)。请重新运行新版安装 EXE。" }
+        $stream = [IO.File]::OpenRead($file); $sha = [Security.Cryptography.SHA256]::Create()
+        try { $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() } finally { $stream.Dispose(); $sha.Dispose() }
+        if ($hash -ne $item.sha256) { throw "文件校验失败：$($item.path)。请重新下载新版安装 EXE。" }
     }
     $drive = New-Object IO.DriveInfo([IO.Path]::GetPathRoot($Root))
     $requiredGb = if ($request.voice -eq 'text' -and -not $request.preserve) { 4 } else { 10 }
-    if ($drive.AvailableFreeSpace -lt ($requiredGb * 1GB)) { throw "安装磁盘至少需要 $requiredGb GB 可用空间，请更换目录或清理空间。" }
+    if ($drive.AvailableFreeSpace -lt ($requiredGb * 1GB)) { throw "安装磁盘至少需要 $requiredGb GB 可用空间。" }
     . (Join-Path $Root 'env.ps1')
-    $env:HF_HUB_OFFLINE = '0'
-    $env:UV_HTTP_TIMEOUT = '180'
-    $env:UV_HTTP_RETRIES = '3'
-    $env:UV_LINK_MODE = 'copy'
+    # A closed desktop window may have left its backend running. Stop only
+    # the process recorded by this installation, after checking its path.
+    $pidFile = Join-Path $Root 'logs\gui-server.pid'
+    if (Test-Path -LiteralPath $pidFile) {
+        $ownedPid = 0
+        if ([int]::TryParse(([IO.File]::ReadAllText($pidFile).Trim()), [ref]$ownedPid)) {
+            $owned = Get-Process -Id $ownedPid -ErrorAction SilentlyContinue
+            if ($owned -and $owned.Path -in @((Join-Path $Root 'src\.venv\Scripts\python.exe'),(Join-Path $Root 'tools\uv\uv.exe'))) {
+                Run 'taskkill.exe' @('/PID',[string]$ownedPid,'/T','/F')
+            }
+        }
+        Remove-Item -LiteralPath $pidFile -Force
+    }
+    $completion = Join-Path $Root 'install-complete.json'
+    if (Test-Path -LiteralPath $completion) { Remove-Item -LiteralPath $completion -Force }
     $python = Join-Path $Root 'src\.venv\Scripts\python.exe'
-    Step 2 '安装独立 Python 和应用依赖（首次下载可能需要几分钟）'
-    Run $script:JarvisUv @('python','install','3.12','--no-bin','--no-registry')
-    $managed = Get-ChildItem -LiteralPath $env:UV_PYTHON_INSTALL_DIR -Directory -Filter 'cpython-3.12*' | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'python.exe') } | Select-Object -First 1
-    if (-not $managed) { throw 'Python 下载未完成，请检查网络后重试。' }
-    $sync = @('sync','--frozen','--project',$script:JarvisSource,'--python',(Join-Path $managed.FullName 'python.exe'),'--no-dev','--extra','server','--extra','desktop')
-    if ($request.voice -ne 'text' -and -not $request.preserve) { $sync += @('--extra','voice') }
-    Run $script:JarvisUv $sync
+    Step 2 '从发布地址准备 Python 和完整运行环境（Gitee 优先，失败自动切换）'
+    Resource 'python'
+    Resource 'runtime-text'
+    Run $python @('-c','import sys,fastapi,uvicorn; import openjarvis.server.app; print("Python runtime ready:",sys.executable)')
     if ($request.preserve) {
         $existing = & $python (Join-Path $Root 'scripts\configure_portable.py') --root $Root --action existing
         if ($LASTEXITCODE -ne 0) { throw '无法读取现有配置，请取消保留配置并重新选择方案。' }
@@ -90,64 +74,42 @@ try {
     Bridge 'validate'
     Step 3 '检查桌面窗口组件 WebView2'
     if (-not (Test-WebView)) {
-        $webview = Join-Path $env:TEMP 'MicrosoftEdgeWebview2Setup.exe'
-        Download 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' $webview
+        Resource 'webview2'
+        $webview = Join-Path $Root 'cache\installers\MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
         $signature = Get-AuthenticodeSignature -LiteralPath $webview
-        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'WebView2 安装器签名校验失败，请检查网络后重试。' }
+        if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'WebView2 安装器签名校验失败。' }
         Run $webview @('/silent','/install')
         if (-not (Test-WebView)) { throw 'WebView2 未安装成功，请重启 Windows 后点击重试。' }
     }
-    Step 4 '准备模型并测试连接'
+    Step 4 '从发布地址准备模型并测试连接'
     if ($request.profile -notin @('api','remote-host')) {
-        $tags = $null
-        try { $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5 } catch { }
-        if (-not $tags) {
-            if (-not (Test-Path -LiteralPath $script:JarvisOllama)) {
-                $installed = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
-                if (Test-Path -LiteralPath $installed) { $script:JarvisOllama = $installed }
-            }
-            if (-not (Test-Path -LiteralPath $script:JarvisOllama)) {
-                $setup = Join-Path $env:TEMP 'OllamaSetup.exe'
-                Download 'https://ollama.com/download/OllamaSetup.exe' $setup
-                $signature = Get-AuthenticodeSignature -LiteralPath $setup
-                if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Ollama') { throw 'Ollama 安装器签名校验失败，请检查网络后重试。' }
-                Run $setup @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR=' + (Join-Path $Root 'runtimes\ollama')))
-                $script:JarvisOllama = Join-Path $Root 'runtimes\ollama\ollama.exe'
-                if (-not (Test-Path -LiteralPath $script:JarvisOllama)) { throw 'Ollama 安装未完成，请重试。' }
-            }
-            & (Join-Path $Root 'start-ollama.ps1')
-            $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
-        }
+        if (-not (Test-Path -LiteralPath (Join-Path $Root 'runtimes\ollama\ollama.exe'))) { Resource 'ollama-cpu' }
+        $script:JarvisOllama = Join-Path $Root 'runtimes\ollama\ollama.exe'
+        if ($request.model -eq 'qwen2.5:0.5b') { Resource 'llm-lite' }
+        elseif ($request.model -eq 'qwen3:1.7b') { Resource 'llm-balanced' }
+        & (Join-Path $Root 'start-ollama.ps1')
+        $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
         if ($request.model -notin @($tags.models | ForEach-Object { $_.name })) {
-            [Console]::WriteLine("正在下载 $($request.model)，请耐心等待；重试会复用已下载内容。")
+            [Console]::WriteLine('当前 Ollama 服务可能使用了另一个模型目录。自定义模型仍使用上游下载。')
             $body = @{ name = $request.model; stream = $false } | ConvertTo-Json
             $pull = Invoke-RestMethod 'http://127.0.0.1:11434/api/pull' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 7200
-            if ($pull.error) { throw '模型下载失败，请检查模型名称和网络后重试。' }
+            if ($pull.error) { throw '模型下载失败。默认模型已提供国内资源，请先退出其他 Ollama 服务后重试。' }
         }
     }
     Bridge 'check'
-    Step 5 '准备所选语音（文字模式自动跳过下载）'
+    Step 5 '从发布地址准备所选语音并实际测试'
     if ($request.voice -ne 'text') {
-        if ($request.preserve) { Run $script:JarvisUv ($sync + @('--extra','voice')) }
-        Run $script:JarvisUv @('pip','install','--python',$python,'misaki[zh]','sherpa-onnx-core==1.13.8')
-        $voiceArgs = @((Join-Path $Root 'scripts\download_speech_assets.py'),'--root',$Root)
-        if ($request.voice -eq 'en') { $voiceArgs += '--english' }
-        Run $python $voiceArgs
-        if ($request.voice -eq 'en') { Run $script:JarvisUv @('pip','install','--python',$python,'https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl') }
-        Run $python @('-c','import sherpa_onnx, kokoro, misaki.zh; print("Voice runtime ready")')
+        Resource 'runtime-voice'
+        Resource 'speech-zh'
+        if ($request.voice -eq 'en') { Resource 'speech-en' }
+        Run $python @((Join-Path $Root 'scripts\verify_voice.py'),'--root',$Root,'--voice',$request.voice)
     }
-    Step 6 '保存配置并完成应用自检'
+    Step 6 '保存配置并测试真实后端启动'
     Bridge 'write'
     Run $python @('-m','openjarvis.cli','setup','check')
-    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.2'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
-    Step 7 '安装完成，现在可以启动 JARVIS'
+    Run $python @((Join-Path $Root 'scripts\smoke_installed.py'),$Root)
+    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.3'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    Step 7 '安装完成，后端与模型已通过实际启动测试'
     exit 0
-} catch {
-    [Console]::WriteLine('JARVIS_ERROR|' + $_.Exception.Message)
-    exit 1
-} finally { if ($lock) { $lock.Dispose() } }
-
-
-
-
-
+} catch { [Console]::WriteLine('JARVIS_ERROR|' + $_.Exception.Message); exit 1 }
+finally { if ($lock) { $lock.Dispose() } }
