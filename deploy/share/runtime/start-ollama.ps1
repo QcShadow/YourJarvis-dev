@@ -19,7 +19,7 @@ try {
         $previousProfile = $env:USERPROFILE
         try {
             $env:USERPROFILE = $ollamaHome
-            $process = Start-Process -FilePath $executable -ArgumentList 'serve' -WorkingDirectory $script:JarvisRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:JarvisRoot 'logs\ollama.stdout.log') -RedirectStandardError (Join-Path $script:JarvisRoot 'logs\ollama.stderr.log') -PassThru
+            $process = Start-JarvisService $executable @('serve') (Join-Path $script:JarvisRoot 'logs\ollama.stdout.log') (Join-Path $script:JarvisRoot 'logs\ollama.stderr.log')
         } finally { $env:USERPROFILE = $previousProfile }
         $state = Write-JarvisState 'ollama-runtime' $process $port
         $ready = $false

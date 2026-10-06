@@ -3,6 +3,12 @@
     try { $listener.Start(); return $listener.LocalEndpoint.Port }
     finally { $listener.Stop() }
 }
+function Start-JarvisService([string] $executable, [string[]] $arguments, [string] $stdout, [string] $stderr) {
+    $result = & (Join-Path $script:JarvisRoot 'JARVIS-Spawn.exe') $script:JarvisRoot $executable $stdout $stderr @arguments
+    if ($LASTEXITCODE -ne 0) { throw '后台进程启动失败，请查看上方原因。' }
+    $child = $result | ConvertFrom-Json
+    return Get-Process -Id ([int]$child.pid) -ErrorAction Stop
+}
 function Get-OwnedJarvisProcess($state, [string] $executable) {
     if (-not $state -or $state.root -ne $script:JarvisRoot) { return $null }
     try {

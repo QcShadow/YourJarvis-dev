@@ -24,8 +24,8 @@ try {
         for ($retry = 0; $retry -lt 3 -and -not $ready; $retry++) {
             $port = Get-FreeJarvisPort
             $env:JARVIS_DESKTOP_INSTANCE = [Guid]::NewGuid().ToString('N')
-            $arguments = @('-m','openjarvis.cli','--quiet','serve','--host','127.0.0.1','--port',[string]$port,'--engine',$launchConfig.engine,'--agent',$launchConfig.agent,'--model',('"{0}"' -f $launchConfig.model))
-            $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $script:JarvisRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:JarvisRoot 'logs\gui-server.stdout.log') -RedirectStandardError (Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log') -PassThru
+            $arguments = @('-m','openjarvis.cli','--quiet','serve','--host','127.0.0.1','--port',[string]$port,'--engine',$launchConfig.engine,'--agent',$launchConfig.agent,'--model',$launchConfig.model)
+            $process = Start-JarvisService $python $arguments (Join-Path $script:JarvisRoot 'logs\gui-server.stdout.log') (Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log')
             $state = Write-JarvisState 'gui-runtime' $process $port $env:JARVIS_DESKTOP_INSTANCE
             for ($attempt = 0; $attempt -lt 180; $attempt++) {
                 Start-Sleep -Milliseconds 500; $process.Refresh()

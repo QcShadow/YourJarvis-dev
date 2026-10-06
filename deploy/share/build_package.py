@@ -102,6 +102,7 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             "JARVIS-Install.exe",
             "JARVIS-Install.exe.config",
             "JARVIS-Resources.exe",
+            "JARVIS-Spawn.exe",
         ):
             add(binaries / name, name)
         add(binaries / "resources.json", "resources.json")

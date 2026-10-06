@@ -41,6 +41,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
     /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll `
     (Join-Path $launcher 'ResourceFetch.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Resource downloader compilation failed' }
+& $compiler /nologo /target:exe /platform:x64 /optimize+ `
+    "/out:$desktopOutput\JARVIS-Spawn.exe" /reference:System.Web.Extensions.dll `
+    (Join-Path $launcher 'Spawn.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Service launcher compilation failed' }
 Copy-Item -LiteralPath (Join-Path $launcher 'Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS-Install.exe.config') -Force
 Copy-Item -LiteralPath (Join-Path $desktopOutput 'JARVIS-Desktop.exe') -Destination (Join-Path $desktopOutput 'JARVIS.exe') -Force
 Copy-Item -LiteralPath (Join-Path $launcher 'Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS.exe.config') -Force
