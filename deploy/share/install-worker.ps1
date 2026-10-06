@@ -65,7 +65,7 @@ try {
     Step 2 '从发布地址准备 Python 和完整运行环境（Gitee 优先，失败自动切换）'
     Resource 'python'
     Resource 'runtime-text'
-    Run $python @('-c','import sys,fastapi,uvicorn; import openjarvis.server.app; print("Python runtime ready:",sys.executable)')
+    Run $python @('-c','import sys,fastapi,uvicorn; import openjarvis.server.app; print(sys.executable)')
     if ($request.preserve) {
         $existing = & $python (Join-Path $Root 'scripts\configure_portable.py') --root $Root --action existing
         if ($LASTEXITCODE -ne 0) { throw '无法读取现有配置，请取消保留配置并重新选择方案。' }

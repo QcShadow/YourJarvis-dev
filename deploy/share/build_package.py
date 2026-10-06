@@ -83,7 +83,9 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
     if desktop:
         # Generated UI assets are ignored by Git; a clean snapshot must build them.
         if not (source / "server/static/index.html").is_file():
-            raise FileNotFoundError("Build the frontend before packaging the desktop release.")
+            raise FileNotFoundError(
+                "Build the frontend before packaging the desktop release."
+            )
         binaries = root / "dist/share-desktop"
         if not binaries.is_dir():
             binaries = root
