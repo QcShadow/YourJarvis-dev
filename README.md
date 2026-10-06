@@ -65,10 +65,11 @@ OpenJarvis is the upstream local-first personal AI framework on which this fork 
 
 朋友使用的成品不需要克隆源码仓库。请从
 [YourJarvis-link Releases](https://github.com/QcShadow/YourJarvis-link/releases)
-下载 `JARVIS-Friends-Bootstrap-*.zip`，解压到可写目录后运行 `bootstrap.cmd`，再运行
-`setup-jarvis.cmd`。它是无需管理员权限的 ZIP 便携包，不预装大模型；首次配置时会自检环境，
-并根据选择下载本地小模型，或连接远程主机/兼容 API。应用会检查 GitHub 和备用镜像的更新，
-并在应用内下载新的 ZIP。
+或国内的 [Gitee 发行版](https://gitee.com/QcShadow/your-jarvis-link/releases)
+下载 `JARVIS-Setup-0.1.3.exe`，直接双击并按中文图形向导安装。
+安装器优先从 Gitee 下载 Python、依赖、默认轻量模型及所选语音，失败自动切换 GitHub，
+支持续传和完整校验。实际模型连接、后端、页面及聊天通过后才显示安装完成。
+更新时运行新版 EXE 并选择原安装目录，保留配置、聊天、记忆和模型。
 
 开发者如果要构建朋友版，请阅读
 [`docs/yourjarvis-release.md`](docs/yourjarvis-release.md)。
