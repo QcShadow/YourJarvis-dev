@@ -19,6 +19,24 @@
 > work used by QcShadow. Public friend builds are published separately at
 > [YourJarvis-link](https://github.com/QcShadow/YourJarvis-link/releases).
 
+## YourJarvis 与 OpenJarvis 的关系
+
+YourJarvis 是 QcShadow 基于 [OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
+开发的个人定制分支，不是 OpenJarvis 官方项目，也不代表 OpenJarvis 官方立场。
+本仓库保留上游项目的基础框架、部分文档、测试和 Apache-2.0 许可，同时加入了面向
+Windows 个人使用和朋友分享的定制功能。
+
+YourJarvis 目前额外维护的内容包括：
+
+- 中文优先的 JARVIS 桌面体验、语音接听与播报、角色和本地记忆配置；
+- 本地模型、兼容 API 和 JARVIS 远程主机的统一配置入口；
+- 朋友共享网关、邀请令牌、轻量 ZIP 便携包和首次安装自检；
+- Windows 桌面启动器、更新检查、GitHub/Gitee 多渠道更新下载；
+- 面向实际分享场景的部署脚本、模型按需下载和运行时打包。
+
+上游 OpenJarvis 的研究框架、官方文档、论文、社区和发布节奏仍由原作者维护。
+如果你要寻找官方版本，请访问 [OpenJarvis 官方仓库](https://github.com/open-jarvis/OpenJarvis)。
+
 ---
 
 <div align="center">
@@ -37,13 +55,25 @@
 >
 > **[Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/)**
 
-## Why OpenJarvis?
+## 上游 OpenJarvis 项目简介
 
 Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
 
-OpenJarvis is that stack. It is a framework for local-first personal AI, built around three core ideas: shared primitives for building on-device agents; evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy; and a learning loop that improves models using local trace data. The goal is simple: make it possible to build personal AI agents that run locally by default, calling the cloud only when truly necessary. OpenJarvis aims to be both a research platform and a production foundation for local AI, in the spirit of PyTorch.
+OpenJarvis is the upstream local-first personal AI framework on which this fork is based. It provides shared primitives for on-device agents, evaluations that treat energy, FLOPs, latency, and dollar cost as first-class constraints alongside accuracy, and a learning loop that improves models using local trace data. The upstream project aims to be both a research platform and a production foundation for local AI.
 
-## Installation
+## YourJarvis Windows 朋友版
+
+朋友使用的成品不需要克隆源码仓库。请从
+[YourJarvis-link Releases](https://github.com/QcShadow/YourJarvis-link/releases)
+下载 `JARVIS-Friends-Bootstrap-*.zip`，解压到可写目录后运行 `bootstrap.cmd`，再运行
+`setup-jarvis.cmd`。它是无需管理员权限的 ZIP 便携包，不预装大模型；首次配置时会自检环境，
+并根据选择下载本地小模型，或连接远程主机/兼容 API。应用会检查 GitHub 和备用镜像的更新，
+并在应用内下载新的 ZIP。
+
+开发者如果要构建朋友版，请阅读
+[`docs/yourjarvis-release.md`](docs/yourjarvis-release.md)。
+
+## 上游 OpenJarvis 开发安装
 
 Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
 
