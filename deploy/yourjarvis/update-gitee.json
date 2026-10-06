@@ -2,6 +2,6 @@
   "version": "0.1.1",
   "releaseUrl": "https://gitee.com/QcShadow/your-jarvis-link/releases/tag/v0.1.1",
   "downloadUrl": "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.1/JARVIS-Friends-Bootstrap-0.1.1.zip",
-  "sha256": "b5a6952a6343eb46fce632475b609fc9e15f0b204b4d38428f2776a322548849",
+  "sha256": "38ab7c19f36558520fc84a6a74b205242e2d2740d58a6f3003ee41c00bfd0041",
   "notes": "双渠道更新：支持 GitHub 与 Gitee，应用内下载朋友版 ZIP。"
 }

@@ -13,6 +13,7 @@ internal sealed class JarvisUpdateInfo
     public string LatestVersion;
     public string ReleaseUrl;
     public string DownloadUrl;
+    public readonly List<string> DownloadUrls = new List<string>();
     public string Sha256;
     public string Notes;
     public bool IsAvailable;
@@ -65,6 +66,11 @@ internal static class JarvisUpdateChecker
         JarvisUpdateInfo selected = candidates[0];
         foreach (JarvisUpdateInfo candidate in candidates)
             if (CompareVersions(candidate.LatestVersion, selected.LatestVersion) > 0) selected = candidate;
+        foreach (JarvisUpdateInfo candidate in candidates) {
+            if (CompareVersions(candidate.LatestVersion, selected.LatestVersion) == 0
+                && !selected.DownloadUrls.Contains(candidate.DownloadUrl))
+                selected.DownloadUrls.Add(candidate.DownloadUrl);
+        }
         return selected;
     }
 
@@ -99,27 +105,38 @@ internal static class JarvisUpdateChecker
     {
         string updates = Path.Combine(root, "updates");
         Directory.CreateDirectory(updates);
+        var downloadUrls = new List<string>(update.DownloadUrls);
+        if (downloadUrls.Count == 0) downloadUrls.Add(update.DownloadUrl);
         string name;
-        try { name = Path.GetFileName(new Uri(update.DownloadUrl).AbsolutePath); }
+        try { name = Path.GetFileName(new Uri(downloadUrls[0]).AbsolutePath); }
         catch { name = "JARVIS-" + update.LatestVersion + ".zip"; }
         if (String.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             name = "JARVIS-" + update.LatestVersion + ".zip";
         string destination = Path.Combine(updates, name);
         string partial = destination + ".download";
-        using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
-        using (var response = await client.GetAsync(update.DownloadUrl, HttpCompletionOption.ResponseHeadersRead)) {
-            response.EnsureSuccessStatusCode();
-            long total = response.Content.Headers.ContentLength ?? -1;
-            long received = 0;
-            using (var input = await response.Content.ReadAsStreamAsync())
-            using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true)) {
-                byte[] buffer = new byte[1024 * 1024]; int count;
-                while ((count = await input.ReadAsync(buffer, 0, buffer.Length)) > 0) {
-                    await output.WriteAsync(buffer, 0, count); received += count;
-                    if (total > 0 && progress != null) progress.Report((int)Math.Min(100, received * 100L / total));
+        Exception lastError = null;
+        bool downloaded = false;
+        foreach (string downloadUrl in downloadUrls) {
+            try {
+                if (File.Exists(partial)) File.Delete(partial);
+                using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(30) })
+                using (var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead)) {
+                    response.EnsureSuccessStatusCode();
+                    long total = response.Content.Headers.ContentLength ?? -1;
+                    long received = 0;
+                    using (var input = await response.Content.ReadAsStreamAsync())
+                    using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true)) {
+                        byte[] buffer = new byte[1024 * 1024]; int count;
+                        while ((count = await input.ReadAsync(buffer, 0, buffer.Length)) > 0) {
+                            await output.WriteAsync(buffer, 0, count); received += count;
+                            if (total > 0 && progress != null) progress.Report((int)Math.Min(100, received * 100L / total));
+                        }
+                    }
                 }
-            }
+                downloaded = true; break;
+            } catch (Exception error) { lastError = error; }
         }
+        if (!downloaded) throw new InvalidOperationException("所有更新下载渠道均不可用。", lastError);
         if (!String.IsNullOrWhiteSpace(update.Sha256)) {
             using (var sha = SHA256.Create()) using (var stream = File.OpenRead(partial)) {
                 string actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
