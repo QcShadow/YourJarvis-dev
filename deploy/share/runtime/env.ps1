@@ -1,10 +1,12 @@
-# Ensure cmdlets remain available when launched by a GUI with inherited PSModulePath.
+﻿# Ensure cmdlets remain available when launched by a GUI with inherited PSModulePath.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility')
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management')
 $script:JarvisRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $env:OPENJARVIS_HOME = $script:JarvisRoot
 $env:PYTHONUTF8 = '1'
+$env:PYTHONHOME = $null
+$env:PYTHONPATH = $null
 $env:OLLAMA_MODELS = Join-Path $script:JarvisRoot 'models\ollama'
 $env:OLLAMA_HOST = 'http://127.0.0.1:11434'
 $localNoProxy = 'localhost,127.0.0.1,::1'
@@ -25,6 +27,7 @@ $env:TMP = $env:TEMP
 $env:HF_HUB_DISABLE_SYMLINKS_WARNING = '1'
 $env:HF_HUB_OFFLINE = '1'
 $env:JARVIS_SKIP_MODEL_PICK = '1'
+$env:JARVIS_PORTABLE_CLIENT = '1'
 $env:PYTHONWARNINGS = @(
     'ignore:dropout option adds dropout:UserWarning:torch.nn.modules.rnn',
     'ignore:`torch.nn.utils.weight_norm` is deprecated:FutureWarning:torch.nn.utils.weight_norm',

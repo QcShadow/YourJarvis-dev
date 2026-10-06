@@ -59,13 +59,15 @@ try {
         }
         Remove-Item -LiteralPath $pidFile -Force
     }
+    & (Join-Path $Root 'stop-gui.ps1') | Out-Null
     $completion = Join-Path $Root 'install-complete.json'
     if (Test-Path -LiteralPath $completion) { Remove-Item -LiteralPath $completion -Force }
     $python = Join-Path $Root 'src\.venv\Scripts\python.exe'
     Step 2 '从发布地址准备 Python 和完整运行环境（Gitee 优先，失败自动切换）'
     Resource 'python'
     Resource 'runtime-text'
-    Run $python @('-c','import sys,fastapi,uvicorn; import openjarvis.server.app; print(sys.executable)')
+    Resource 'runtime-native'
+    Run $python @('-c','import sys,fastapi,uvicorn; import openjarvis.server.app; from pathlib import Path; assert Path(sys._base_executable).is_relative_to(Path(sys.prefix).parents[1]); import openjarvis_rust; print(sys.executable)')
     if ($request.preserve) {
         $existing = & $python (Join-Path $Root 'scripts\configure_portable.py') --root $Root --action existing
         if ($LASTEXITCODE -ne 0) { throw '无法读取现有配置，请取消保留配置并重新选择方案。' }
@@ -87,18 +89,19 @@ try {
         $script:JarvisOllama = Join-Path $Root 'runtimes\ollama\ollama.exe'
         if ($request.model -eq 'qwen2.5:0.5b') { Resource 'llm-lite' }
         & (Join-Path $Root 'start-ollama.ps1')
-        $tags = Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
+        $tags = Invoke-RestMethod ($env:OLLAMA_HOST + '/api/tags') -TimeoutSec 5
         if ($request.model -notin @($tags.models | ForEach-Object { $_.name })) {
-            [Console]::WriteLine('当前 Ollama 服务可能使用了另一个模型目录。自定义模型仍使用上游下载。')
+            [Console]::WriteLine('默认模型已从发布资源准备；自定义模型仍使用上游下载。')
             $body = @{ name = $request.model; stream = $false } | ConvertTo-Json
-            $pull = Invoke-RestMethod 'http://127.0.0.1:11434/api/pull' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 7200
-            if ($pull.error) { throw '模型下载失败。默认模型已提供国内资源，请先退出其他 Ollama 服务后重试。' }
+            $pull = Invoke-RestMethod ($env:OLLAMA_HOST + '/api/pull') -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 7200
+            if ($pull.error) { throw '模型下载失败。请检查模型名称和网络后重试。' }
         }
     }
     Bridge 'check'
     Step 5 '从发布地址准备所选语音并实际测试'
     if ($request.voice -ne 'text') {
         Resource 'runtime-voice'
+        Resource 'runtime-native'
         Resource 'speech-zh'
         if ($request.voice -eq 'en') { Resource 'speech-en' }
         Run $python @((Join-Path $Root 'scripts\verify_voice.py'),'--root',$Root,'--voice',$request.voice)
@@ -107,7 +110,7 @@ try {
     Bridge 'write'
     Run $python @('-m','openjarvis.cli','setup','check')
     Run $python @((Join-Path $Root 'scripts\smoke_installed.py'),$Root)
-    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.3'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.4'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Step 7 '安装完成，后端与模型已通过实际启动测试'
     exit 0
 } catch { [Console]::WriteLine('JARVIS_ERROR|' + $_.Exception.Message); exit 1 }

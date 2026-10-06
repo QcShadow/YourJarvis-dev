@@ -54,8 +54,8 @@ def existing_request(root: Path) -> dict:
         and config.get("engine", {})
         .get("ollama", {})
         .get("host", "http://127.0.0.1:11434")
-        .rstrip("/")
-        != "http://127.0.0.1:11434"
+        .split(":")[:2]
+        != ["http", "//127.0.0.1"]
     ):
         raise ValueError(
             "修复向导只管理本机 Ollama，请重新选择兼容 API 以连接远程服务。"
@@ -116,7 +116,7 @@ def check_request(root: Path, data: dict) -> None:
     else:
         try:
             response = httpx.post(
-                "http://127.0.0.1:11434/api/generate",
+                os.environ.get("JARVIS_LOCAL_OLLAMA", "http://127.0.0.1:11434") + "/api/generate",
                 json={
                     "model": data["model"],
                     "prompt": "Hi",
@@ -124,6 +124,7 @@ def check_request(root: Path, data: dict) -> None:
                     "options": {"num_predict": 1, "num_ctx": 2048},
                 },
                 timeout=180,
+                trust_env=False,
             )
             response.raise_for_status()
             if "response" not in response.json():

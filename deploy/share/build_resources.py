@@ -93,7 +93,8 @@ def main():
     parser.add_argument("--voice-env", type=Path, required=True)
     parser.add_argument("--python-home", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--version", default="0.1.3")
+    parser.add_argument("--version", default="0.1.4")
+    parser.add_argument("--native-env", type=Path, help="Environment with the built cp312 Windows native extension")
     args = parser.parse_args()
     root, output = args.root, args.output
     output.mkdir(parents=True, exist_ok=True)
@@ -112,6 +113,7 @@ def main():
         "python": list(tree(args.python_home, python_home)),
         "runtime-text": list(runtime_entries(args.text_env)),
         "runtime-voice": list(runtime_entries(args.voice_env)),
+        "runtime-native": list(tree((args.native_env or root / "src/.venv") / "Lib/site-packages/openjarvis_rust", "src/.venv/Lib/site-packages/openjarvis_rust")),
         "llm-lite": list(model_entries(root, "qwen2.5", "0.5b")),
         "ollama-cpu": [
             (root / "runtimes/ollama/ollama.exe", "runtimes/ollama/ollama.exe")

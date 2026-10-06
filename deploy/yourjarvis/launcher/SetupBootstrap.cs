@@ -43,7 +43,7 @@ internal static class SetupBootstrap {
 internal sealed class SetupWindow : Form {
     private readonly TextBox folder=new TextBox(); private readonly Button next=new Button(); private readonly ProgressBar bar=new ProgressBar(); private readonly Label status=new Label(); private bool busy;
     internal SetupWindow() {
-        Text="JARVIS 0.1.3 安装"; Font=new Font("Microsoft YaHei UI",10); ClientSize=new Size(680,320); AutoScaleMode=AutoScaleMode.Dpi; StartPosition=FormStartPosition.CenterScreen; MaximizeBox=false;
+        Text="JARVIS 0.1.4 安装"; Font=new Font("Microsoft YaHei UI",10); ClientSize=new Size(680,320); AutoScaleMode=AutoScaleMode.Dpi; StartPosition=FormStartPosition.CenterScreen; MaximizeBox=false;
         var title=new Label {Text="安装或升级 JARVIS",Left=24,Top=24,Width=620,Height=44,Font=new Font(Font.FontFamily,21,FontStyle.Bold)};
         var hint=new Label {Text="选择安装位置后，自动准备程序并打开中文安装向导。\r\n升级请选原来的 JARVIS-Share 文件夹，现有配置和数据会保留。",Left=26,Top=86,Width=624,Height=60};
         folder.SetBounds(26,158,490,30); folder.Text=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"JARVIS");

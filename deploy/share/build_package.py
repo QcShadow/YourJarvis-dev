@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 
 RUNTIME_FILES = (
+    "runtime-state.ps1",
     "env.ps1",
     "jarvis.cmd",
     "jarvis.ps1",

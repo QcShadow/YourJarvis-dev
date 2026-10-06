@@ -164,6 +164,12 @@ def serve(
     inject_credentials()
 
     config = load_config()
+    # A portable desktop owns its model service and never discovers the
+    # developer's other engines or inherited cloud credentials.
+    if os.environ.get("JARVIS_PORTABLE_CLIENT") == "1":
+        local_host = os.environ.get("JARVIS_LOCAL_OLLAMA")
+        if config.engine.default == "ollama" and local_host:
+            config.engine.ollama.host = local_host
 
     # Resolve host/port from CLI args or config
     bind_host = host or config.server.host
@@ -230,7 +236,7 @@ def serve(
         or os.environ.get("GOOGLE_API_KEY")
         or os.environ.get("OPENROUTER_API_KEY")
     )
-    if _has_cloud and engine_name not in {"cloud", "api"}:
+    if _has_cloud and not portable_client and engine_name not in {"cloud", "api"}:
         try:
             from openjarvis.engine.cloud import CloudEngine
 

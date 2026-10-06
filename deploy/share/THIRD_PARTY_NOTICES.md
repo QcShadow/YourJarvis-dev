@@ -26,10 +26,11 @@ This archive uses the Apache-2.0 option; the full license text is retained in
 `src/LICENSE`. Copyright Astral Software Inc. See the upstream project for
 notices for its bundled dependencies.
 
-Version 0.1.3 mirrors a dedicated Windows x64 CPython 3.12.14 distribution and
+Version 0.1.4 reuses the immutable v0.1.3 Windows x64 CPython 3.12.14 distribution and
 clean, explicitly built text/voice dependency environments as immutable resource
 packs. CPython's LICENSE and dependency .dist-info metadata/licenses are retained.
-The installer rewrites only the environment's interpreter home and editable
+The installer replaces uv's absolute-path Windows redirector with CPython's
+stock venv launcher and rewrites the environment's interpreter home and editable
 application source path for the recipient's chosen directory. No builder config,
 credentials, logs or personal state are included. Generated console entry points
 with builder paths are excluded; launch uses python -m openjarvis.cli.

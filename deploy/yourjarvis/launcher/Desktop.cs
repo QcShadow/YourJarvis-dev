@@ -16,17 +16,22 @@ using Microsoft.Web.WebView2.WinForms;
 
 internal static class DesktopProgram
 {
+    internal static readonly string InstanceKey = GetInstanceKey();
+    private static string GetInstanceKey() {
+        using(var sha=System.Security.Cryptography.SHA256.Create())
+            return BitConverter.ToString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory).TrimEnd('\\').ToUpperInvariant()))).Replace("-", "");
+    }
     [STAThread]
     private static void Main(string[] args)
     {
-        using (var instance = new Mutex(false, "Local\\JarvisDesktop"))
+        using (var instance = new Mutex(false, "Local\\JarvisDesktop-" + InstanceKey))
         {
             bool owns = false;
             try { owns = instance.WaitOne(0); }
             catch (AbandonedMutexException) { owns = true; }
             if (!owns)
             {
-                try { using (var signal = EventWaitHandle.OpenExisting("Local\\JarvisDesktopActivate")) signal.Set(); }
+                try { using (var signal = EventWaitHandle.OpenExisting("Local\\JarvisDesktopActivate-" + DesktopProgram.InstanceKey)) signal.Set(); }
                 catch (WaitHandleCannotBeOpenedException) { }
                 return;
             }
@@ -44,7 +49,10 @@ internal static class DesktopProgram
 
 internal sealed class JarvisWindow : Form
 {
-    private const string Server = "http://127.0.0.1:8000";
+    private string Server = "";
+    private string serverIdentity = "";
+    private bool starting;
+    private readonly System.Windows.Forms.Timer healthTimer = new System.Windows.Forms.Timer { Interval = 5000 };
     private const int Hotkey = 0x4A56;
     private readonly string root = AppDomain.CurrentDomain.BaseDirectory;
     private readonly WebView2 web = new WebView2();
@@ -55,8 +63,8 @@ internal sealed class JarvisWindow : Form
     private readonly ToolStripMenuItem pauseItem = new ToolStripMenuItem();
     private readonly ToolStripMenuItem updateItem = new ToolStripMenuItem();
     private readonly ToolStripMenuItem quitItem = new ToolStripMenuItem();
-    private readonly EventWaitHandle activate = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\JarvisDesktopActivate");
-    private readonly HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+    private readonly EventWaitHandle activate = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\JarvisDesktopActivate-" + DesktopProgram.InstanceKey);
+    private readonly HttpClient http = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(8) };
     private bool exiting;
     private bool checkingUpdate;
     private bool english;
@@ -98,6 +106,17 @@ internal sealed class JarvisWindow : Form
         retry.Click+=async delegate {await StartAssistant();};
         repair.Click+=async delegate {try {await RunInstaller();await StartAssistant();} catch(Exception ex) {loading.Text=ex.Message;}};
         openLogs.Click+=delegate {Directory.CreateDirectory(Path.Combine(root,"logs"));Process.Start(new ProcessStartInfo(Path.Combine(root,"logs")){UseShellExecute=true});};
+        healthTimer.Tick += async delegate {
+            if(starting || exiting || !web.Visible) return;
+            try {
+                using(var response=await http.GetAsync(Server + "/health")) {
+                    IEnumerable<string> ids;
+                    if(!response.IsSuccessStatusCode || !response.Headers.TryGetValues("X-Jarvis-Instance", out ids) || String.Join("",ids)!=serverIdentity)
+                        throw new Exception("后台连接已中断。请点击重试启动，或修复安装。");
+                }
+            } catch(Exception error) { ShowFailure(error.Message); }
+        };
+        healthTimer.Start();
         recovery.Controls.AddRange(new Control[]{retry,repair,openLogs}); Controls.Add(recovery);
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(new ToolStripItem[] { showItem, pauseItem, updateItem, new ToolStripSeparator(), quitItem });
@@ -165,11 +184,11 @@ internal sealed class JarvisWindow : Form
         updateItem.Text = english ? "Check for updates" : "检查更新";
         quitItem.Text = english ? "Quit JARVIS" : "退出贾维斯";
     }
-    private static bool IsLocal(string address)
+    private bool IsLocal(string address)
     {
         Uri uri;
         return Uri.TryCreate(address, UriKind.Absolute, out uri)
-            && uri.Scheme == "http" && uri.Host == "127.0.0.1" && uri.Port == 8000;
+            && uri.Scheme == "http" && uri.Host == "127.0.0.1" && !String.IsNullOrEmpty(Server) && uri.Authority == new Uri(Server).Authority;
     }
     private static void OpenLink(string address)
     {
@@ -184,6 +203,8 @@ internal sealed class JarvisWindow : Form
     }
     private async Task StartAssistant()
     {
+        if(starting || exiting) return;
+        starting=true;
         try
         {
             recovery.Visible=false; loading.Visible=true; web.Visible=false; loading.Text="正在启动贾维斯…";
@@ -207,10 +228,21 @@ internal sealed class JarvisWindow : Form
                 Log("Backend startup: "+normal+Environment.NewLine+detail);
                 if (process.ExitCode != 0) throw new Exception("后端启动未完成。点击“修复安装”重试，详细原因已保存到 desktop.log。\n"+(detail.Length>600?detail.Substring(detail.Length-600):detail));
             }
+            var state=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"logs","gui-runtime.json")));
+            Server=Convert.ToString(state["url"]); serverIdentity=Convert.ToString(state["instance"]);
+            Uri backend;
+            if(Convert.ToString(state["root"]).TrimEnd('\\')!=root.TrimEnd('\\') || !Uri.TryCreate(Server,UriKind.Absolute,out backend) || backend.Scheme!="http" || backend.Host!="127.0.0.1" || String.IsNullOrEmpty(serverIdentity))
+                throw new Exception("后台启动信息无效，请修复安装。");
+            using(var response=await http.GetAsync(Server+"/health")) {
+                IEnumerable<string> ids;
+                if(!response.IsSuccessStatusCode || !response.Headers.TryGetValues("X-Jarvis-Instance",out ids) || String.Join("",ids)!=serverIdentity)
+                    throw new Exception("无法连接本安装目录的后台，请重试启动。");
+            }
+            if(web.CoreWebView2==null) {
             Directory.CreateDirectory(Path.Combine(root, "data", "desktop"));
             var env = await CoreWebView2Environment.CreateAsync(null,
                 Path.Combine(root, "data", "desktop", "webview2"),
-                new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required"
+                new CoreWebView2EnvironmentOptions("--autoplay-policy=no-user-gesture-required --no-proxy-server"
                     + (debug ? " --remote-debugging-port=9223" : "")));
             await web.EnsureCoreWebView2Async(env);
             Log("DPI: " + GetDpiForWindow(Handle) + "; PerMonitorV2="
@@ -219,7 +251,7 @@ internal sealed class JarvisWindow : Form
             Log("WebView2 ready: " + web.CoreWebView2.Environment.BrowserVersionString);
             await web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.__JARVIS_DESKTOP__ = true;"
-                + "if(location.origin==='" + Server + "' && navigator.serviceWorker"
+                + "if(location.hostname==='127.0.0.1' && navigator.serviceWorker"
                 + " && !sessionStorage.getItem('jarvis-fresh-"
                 + File.GetLastWriteTimeUtc(Application.ExecutablePath).Ticks + "')) {"
                 + "sessionStorage.setItem('jarvis-fresh-"
@@ -234,6 +266,9 @@ internal sealed class JarvisWindow : Form
             };
             web.CoreWebView2.NavigationCompleted += delegate(object sender, CoreWebView2NavigationCompletedEventArgs e) {
                 Log("Navigation: " + (e.IsSuccess ? "ready" : e.WebErrorStatus.ToString()));
+                if(e.IsSuccess) { web.Visible=true; loading.Visible=false; recovery.Visible=false; web.BringToFront(); }
+                else if(e.WebErrorStatus!=CoreWebView2WebErrorStatus.OperationCanceled)
+                    ShowFailure("界面未能连接后台（"+e.WebErrorStatus+"）。请点击重试启动。");
             };
             web.CoreWebView2.NewWindowRequested += delegate(object sender, CoreWebView2NewWindowRequestedEventArgs e) {
                 e.Handled = true; OpenLink(e.Uri);
@@ -250,18 +285,20 @@ internal sealed class JarvisWindow : Form
                         SetLanguage(data.ContainsKey("language") && Convert.ToString(data["language"]) == "en-US");
                 } catch { }
             };
+            }
             web.CoreWebView2.Navigate(Server);
-            web.Visible = true;
-            loading.Visible = false;
-            web.BringToFront();
         }
         catch (Exception error)
         {
             Log("Startup error: " + error.ToString());
-            loading.Text = (english ? "JARVIS could not start.\n" : "贾维斯启动失败。\n") + error.Message
-                + "\n" + Path.Combine(root, "logs", "desktop.log");
-            recovery.Visible=true; recovery.BringToFront();
+            ShowFailure(error.Message);
         }
+        finally { starting=false; }
+    }
+    private void ShowFailure(string message) {
+        web.Visible=false; loading.Visible=true;
+        loading.Text=(english ? "JARVIS could not start.\n" : "贾维斯启动失败。\n")+message+"\n"+Path.Combine(root,"logs","desktop.log");
+        recovery.Visible=true; recovery.BringToFront(); Log(message);
     }
     private void Log(string message)
     {
@@ -341,7 +378,7 @@ internal sealed class JarvisWindow : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { exiting = true; tray.Dispose(); http.Dispose(); web.Dispose(); }
+        if (disposing) { exiting = true; healthTimer.Dispose(); activate.Dispose(); tray.Dispose(); http.Dispose(); web.Dispose(); }
         base.Dispose(disposing);
     }
 }

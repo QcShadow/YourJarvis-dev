@@ -1,9 +1,13 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility')
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Management')
 
 $root = $PSScriptRoot
+. (Join-Path $root 'env.ps1')
+. (Join-Path $root 'runtime-state.ps1')
+Stop-OwnedJarvisService 'gui-runtime' (Join-Path $root 'src\.venv\Scripts\python.exe')
+Stop-OwnedJarvisService 'ollama-runtime' (Join-Path $root 'runtimes\ollama\ollama.exe')
 $pidFile = Join-Path $root 'logs\gui-server.pid'
 
 if (-not (Test-Path -LiteralPath $pidFile)) {

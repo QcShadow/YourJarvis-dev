@@ -1,88 +1,45 @@
-[CmdletBinding()]
-param(
-    [switch] $NoBrowser
-)
+﻿[CmdletBinding()]
+param([switch] $NoBrowser)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
-
 . (Join-Path $PSScriptRoot 'env.ps1')
-
-$serverUrl = 'http://127.0.0.1:8000'
-$healthUrl = "$serverUrl/health"
-$pidFile = Join-Path $script:JarvisRoot 'logs\gui-server.pid'
-$stdout = Join-Path $script:JarvisRoot 'logs\gui-server.stdout.log'
-$stderr = Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log'
-
-function Test-JarvisGuiServer {
-    try {
-        $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 2
-        return $response.status -eq 'ok'
-    } catch {
-        return $false
-    }
-}
-
-$launchConfig = Get-JarvisLaunchConfig
-if ($launchConfig.engine -eq 'ollama') {
-    & (Join-Path $script:JarvisRoot 'start-ollama.ps1') | Out-Null
-}
-
-if (-not (Test-JarvisGuiServer)) {
-    $arguments = @(
-        '-m', 'openjarvis.cli', '--quiet', 'serve',
-        '--host', '127.0.0.1',
-        '--port', '8000',
-        '--engine', $launchConfig.engine,
-        '--agent', $launchConfig.agent,
-        '--model', ('"{0}"' -f $launchConfig.model)
-    )
-    $process = Start-Process -FilePath (Join-Path $script:JarvisSource '.venv\Scripts\python.exe') `
-        -ArgumentList $arguments `
-        -WorkingDirectory $script:JarvisRoot `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -PassThru
-    Set-Content -LiteralPath $pidFile -Value $process.Id -Encoding ascii
-
-    for ($attempt = 0; $attempt -lt 120; $attempt++) {
-        Start-Sleep -Milliseconds 500
-        if (Test-JarvisGuiServer) {
-            break
-        }
-        if ($process.HasExited) {
-            $details = if (Test-Path -LiteralPath $stderr) {
-                (Get-Content -LiteralPath $stderr -Tail 25) -join [Environment]::NewLine
-            } else {
-                'No server error log was created.'
-            }
-            throw "JARVIS GUI server exited during startup.`n$details"
-        }
-    }
-}
-
-if (-not (Test-JarvisGuiServer)) {
-    throw "JARVIS GUI did not become ready. Check $stderr"
-}
-
-# Warm the local TTS model in a detached helper so the browser can open at
-# once while the first spoken reply avoids paying the full cold-start cost.
-$prewarmCommand = @"
+. (Join-Path $PSScriptRoot 'runtime-state.ps1')
+$lock = $null
 try {
-    Invoke-RestMethod -Uri '$serverUrl/v1/speech/tts/health' -TimeoutSec 180 | Out-Null
-} catch {
-}
-"@
-$encodedPrewarm = [Convert]::ToBase64String(
-    [Text.Encoding]::Unicode.GetBytes($prewarmCommand)
-)
-Start-Process -FilePath 'powershell.exe' `
-    -ArgumentList @('-NoLogo', '-NoProfile', '-EncodedCommand', $encodedPrewarm) `
-    -WindowStyle Hidden | Out-Null
-
-if (-not $NoBrowser) {
-    Start-Process $serverUrl
-}
-
-Write-Host "JARVIS GUI is ready at $serverUrl"
+    $lock = [IO.File]::Open((Join-Path $script:JarvisRoot 'logs\gui-start.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $launchConfig = Get-JarvisLaunchConfig
+    $python = Join-Path $script:JarvisSource '.venv\Scripts\python.exe'
+    $state = Read-JarvisState 'gui-runtime'
+    $owned = Get-OwnedJarvisProcess $state $python
+    if (-not ($owned -and $state.instance -and (Test-JarvisEndpoint ($state.url + '/health') $state.instance))) {
+        Stop-OwnedJarvisService 'gui-runtime' $python
+        if ($launchConfig.engine -eq 'ollama') {
+            & (Join-Path $script:JarvisRoot 'start-ollama.ps1') | Out-Null
+            $env:JARVIS_LOCAL_OLLAMA = $env:OLLAMA_HOST
+        }
+        $env:JARVIS_PORTABLE_CLIENT = '1'
+        $env:OPENJARVIS_API_KEY = $null; $env:PYTHONHOME = $null; $env:PYTHONPATH = $null
+        $ready = $false
+        for ($retry = 0; $retry -lt 3 -and -not $ready; $retry++) {
+            $port = Get-FreeJarvisPort
+            $env:JARVIS_DESKTOP_INSTANCE = [Guid]::NewGuid().ToString('N')
+            $arguments = @('-m','openjarvis.cli','--quiet','serve','--host','127.0.0.1','--port',[string]$port,'--engine',$launchConfig.engine,'--agent',$launchConfig.agent,'--model',('"{0}"' -f $launchConfig.model))
+            $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $script:JarvisRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:JarvisRoot 'logs\gui-server.stdout.log') -RedirectStandardError (Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log') -PassThru
+            $state = Write-JarvisState 'gui-runtime' $process $port $env:JARVIS_DESKTOP_INSTANCE
+            for ($attempt = 0; $attempt -lt 180; $attempt++) {
+                Start-Sleep -Milliseconds 500; $process.Refresh()
+                if ($process.HasExited) { break }
+                if (Test-JarvisEndpoint ($state.url + '/health') $state.instance) { $ready = $true; break }
+            }
+            if (-not $ready) {
+                Stop-OwnedJarvisService 'gui-runtime' $python
+                $details = (Get-Content -LiteralPath (Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log') -Tail 20) -join [Environment]::NewLine
+                if ($details -notmatch 'address already in use|10048') { throw "本安装目录的后台未启动成功，请点击修复安装。`n$details" }
+            }
+        }
+        if (-not $ready) { throw '本地端口暂时不可用，请重试启动。' }
+    }
+    if (-not $NoBrowser) { Start-Process $state.url }
+    Write-Host ('JARVIS_RUNTIME|' + ($state | ConvertTo-Json -Compress))
+} finally { if ($lock) { $lock.Dispose() } }

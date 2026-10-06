@@ -1,46 +1,36 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
-
+$ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'env.ps1')
-
+. (Join-Path $PSScriptRoot 'runtime-state.ps1')
+$executable = Join-Path $script:JarvisRoot 'runtimes\ollama\ollama.exe'
+if (-not (Test-Path -LiteralPath $executable)) { throw '本安装目录缺少模型运行组件，请点击修复安装。' }
+$lock = $null
 try {
-    Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null
-    Write-Host 'Ollama is already running on http://127.0.0.1:11434.'
-    return
-} catch {
-    # Start the local server below.
-}
-
-if (-not (Test-Path -LiteralPath $script:JarvisOllama)) {
-    throw "Ollama is not installed yet at $script:JarvisOllama"
-}
-
-$ollamaHome = Join-Path $script:JarvisRoot 'runtimes\ollama-home'
-New-Item -ItemType Directory -Path $ollamaHome -Force | Out-Null
-# Ollama has no separate OLLAMA_HOME setting for its small key/config folder.
-# Scope USERPROFILE to this child process only; the Windows account is unchanged.
-$previousProfile = $env:USERPROFILE
-
-$stdout = Join-Path $script:JarvisRoot 'logs\ollama.stdout.log'
-$stderr = Join-Path $script:JarvisRoot 'logs\ollama.stderr.log'
-try {
-    $env:USERPROFILE = $ollamaHome
-    Start-Process -FilePath $script:JarvisOllama `
-        -ArgumentList 'serve' `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr | Out-Null
-} finally { $env:USERPROFILE = $previousProfile }
-
-for ($attempt = 0; $attempt -lt 20; $attempt++) {
-    Start-Sleep -Milliseconds 500
-    try {
-        Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 2 | Out-Null
-        Write-Host 'Ollama started on http://127.0.0.1:11434.'
-        return
-    } catch {
-        # Keep waiting until the bounded startup timeout expires.
+    $lock = [IO.File]::Open((Join-Path $script:JarvisRoot 'logs\ollama-start.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $state = Read-JarvisState 'ollama-runtime'
+    $owned = Get-OwnedJarvisProcess $state $executable
+    if (-not ($owned -and (Test-JarvisEndpoint ($state.url + '/api/tags')))) {
+        Stop-OwnedJarvisService 'ollama-runtime' $executable
+        $port = Get-FreeJarvisPort
+        $env:OLLAMA_HOST = "http://127.0.0.1:$port"
+        $ollamaHome = Join-Path $script:JarvisRoot 'runtimes\ollama-home'
+        New-Item -ItemType Directory -Path $ollamaHome -Force | Out-Null
+        $previousProfile = $env:USERPROFILE
+        try {
+            $env:USERPROFILE = $ollamaHome
+            $process = Start-Process -FilePath $executable -ArgumentList 'serve' -WorkingDirectory $script:JarvisRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $script:JarvisRoot 'logs\ollama.stdout.log') -RedirectStandardError (Join-Path $script:JarvisRoot 'logs\ollama.stderr.log') -PassThru
+        } finally { $env:USERPROFILE = $previousProfile }
+        $state = Write-JarvisState 'ollama-runtime' $process $port
+        $ready = $false
+        for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            Start-Sleep -Milliseconds 500; $process.Refresh()
+            if ($process.HasExited) { break }
+            if (Test-JarvisEndpoint ($state.url + '/api/tags')) { $ready = $true; break }
+        }
+        if (-not $ready) { Stop-OwnedJarvisService 'ollama-runtime' $executable; throw '本安装目录的模型服务启动失败，请查看 logs\ollama.stderr.log 后重试。' }
     }
-}
-
-throw "Ollama did not become ready. Check $stderr"
+    $env:OLLAMA_HOST = $state.url
+    $env:JARVIS_LOCAL_OLLAMA = $state.url
+    Write-Host "本安装目录的模型服务已就绪：$($state.url)"
+} finally { if ($lock) { $lock.Dispose() } }

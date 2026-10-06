@@ -83,6 +83,15 @@ internal static class ResourceFetch
     }
     private static void Relocate(string root,string home) {
         string environment=Path.Combine(root,"src", ".venv"); if(!Directory.Exists(environment)) return;
+        // uv's Windows redirector embeds the builder's absolute Python path.
+        // Use CPython's relocatable venv redirectors, which consult pyvenv.cfg.
+        string pythonHome=Path.GetFullPath(Path.Combine(root,home));
+        foreach(string name in new[]{"python.exe","pythonw.exe"}) {
+            string launcher=Path.Combine(pythonHome,"Lib","venv","scripts","nt",name);
+            if(!File.Exists(launcher)) throw new Exception("Python 资源缺少可迁移启动器，请重新下载 Python 资源。");
+            Directory.CreateDirectory(Path.Combine(environment,"Scripts"));
+            File.Copy(launcher,Path.Combine(environment,"Scripts",name),true);
+        }
         File.WriteAllText(Path.Combine(environment,"pyvenv.cfg"),"home = "+Path.Combine(root,home)+"\r\nimplementation = CPython\r\nversion_info = 3.12.14\r\ninclude-system-site-packages = false\r\n",new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(environment,"Lib","site-packages","_editable_impl_openjarvis.pth"),Path.Combine(root,"src","src")+Environment.NewLine,new UTF8Encoding(false));
     }

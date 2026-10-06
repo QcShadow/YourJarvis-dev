@@ -59,7 +59,7 @@ internal sealed class InstallWizard : Form
     public InstallWizard(string packageRoot, string[] args)
     {
         source = packageRoot; root = source; noLaunch = args.Contains("--no-launch");
-        Text = "JARVIS 0.1.3 · 安装向导";
+        Text = "JARVIS 0.1.4 · 安装向导";
         Font = new Font("Microsoft YaHei UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 650); MinimumSize = Size; MaximizeBox = false;
