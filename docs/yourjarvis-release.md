@@ -2,7 +2,8 @@
 
 This repository is the private development source. The public distribution
 repository is `QcShadow/YourJarvis-link`; release ZIP files belong in GitHub
-Releases rather than Git history.
+Releases rather than Git history. The domestic mirror is
+`QcShadow/your-jarvis-link` on Gitee.
 
 The Windows distribution is built from `D:\Jarvis`:
 
