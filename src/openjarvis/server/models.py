@@ -116,6 +116,7 @@ class ModelObject(BaseModel):
     object: str = "model"
     created: int = Field(default_factory=lambda: int(time.time()))
     owned_by: str = "openjarvis"
+    display_name: str | None = None
 
 
 class ModelListResponse(BaseModel):

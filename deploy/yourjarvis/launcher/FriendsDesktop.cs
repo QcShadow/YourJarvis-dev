@@ -318,7 +318,7 @@ internal sealed class LinkWindow : Form
             if (update.IsAvailable) {
                 string message = "当前版本：" + update.CurrentVersion + "\n最新版本：" + update.LatestVersion;
                 if (!String.IsNullOrWhiteSpace(update.Notes)) message += "\n\n" + update.Notes;
-                var answer = MessageBox.Show(message + "\n\n现在打开下载页面吗？", "JARVIS Link 有新版本",
+                var answer = MessageBox.Show(message + "\n\n现在下载并重启更新吗？", "JARVIS Link 有新版本",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                 if (answer == DialogResult.Yes) await DownloadUpdate(update);
             } else if (interactive) {
@@ -336,7 +336,13 @@ internal sealed class LinkWindow : Form
         try {
             var progress = new Progress<int>(value => updateButton.Text = value + "%");
             string path = await JarvisUpdateChecker.DownloadAsync(root, update, progress);
-            MessageBox.Show("更新包已下载到：\n" + path + "\n\n请关闭 JARVIS Link 后解压覆盖程序文件；data、models 和 logs 目录请保留。", "JARVIS Link 更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var answer = MessageBox.Show("更新包已下载完成。现在重启 JARVIS Link 并自动应用更新吗？", "JARVIS Link 更新", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (answer == DialogResult.Yes) {
+                JarvisUpdateChecker.LaunchAutomaticUpdate(path, root);
+                closing = true; tray.Visible = false; Close();
+            } else {
+                MessageBox.Show("稍后可从这里手动运行更新包：\n" + path, "JARVIS Link 更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         } catch (Exception error) {
             MessageBox.Show("更新下载失败：\n" + error.Message, "JARVIS Link", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         } finally { updateButton.Text = "检查更新"; updateButton.Enabled = true; }

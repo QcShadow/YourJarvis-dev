@@ -24,9 +24,12 @@ try {
         for ($retry = 0; $retry -lt 3 -and -not $ready; $retry++) {
             $port = Get-FreeJarvisPort
             $env:JARVIS_DESKTOP_INSTANCE = [Guid]::NewGuid().ToString('N')
+            $voicePort = Get-FreeJarvisPort -Exclude @($port)
+            $env:JARVIS_VOICE_URL = "http://127.0.0.1:$voicePort"
+            $env:JARVIS_VOICE_INSTANCE = $env:JARVIS_DESKTOP_INSTANCE
             $arguments = @('-m','openjarvis.cli','--quiet','serve','--host','127.0.0.1','--port',[string]$port,'--engine',$launchConfig.engine,'--agent',$launchConfig.agent,'--model',$launchConfig.model)
             $process = Start-JarvisService $python $arguments (Join-Path $script:JarvisRoot 'logs\gui-server.stdout.log') (Join-Path $script:JarvisRoot 'logs\gui-server.stderr.log')
-            $state = Write-JarvisState 'gui-runtime' $process $port $env:JARVIS_DESKTOP_INSTANCE
+            $state = Write-JarvisState 'gui-runtime' $process $port $env:JARVIS_DESKTOP_INSTANCE $env:JARVIS_VOICE_URL
             for ($attempt = 0; $attempt -lt 180; $attempt++) {
                 Start-Sleep -Milliseconds 500; $process.Refresh()
                 if ($process.HasExited) { break }

@@ -168,6 +168,7 @@ export interface StreamState {
 // --- API Types ---
 
 export interface ModelInfo {
+  display_name?: string | null;
   id: string;
   object: string;
   created: number;

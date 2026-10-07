@@ -4,6 +4,9 @@ import { PcmPlayer } from './pcm-player';
 import { defaultVoiceSettings, responseLanguage, selectedVoiceProfile } from './voice-settings';
 
 export type TtsState = 'idle' | 'loading' | 'speaking';
+export interface VoicePlaybackOptions {
+  voiceId?: string; speed?: number; voiceProfile?: string; outputLanguage?: string; characterId?: string;
+}
 
 /**
  * Voice output is a single shared resource: one utterance at a time, for the
@@ -23,7 +26,7 @@ interface TtsStore {
   available: boolean | null;
   /** Last message spoken by autoplay, so a re-render never repeats it. */
   autoSpokenId: string | null;
-  speak: (id: string, text: string) => Promise<void>;
+  speak: (id: string, text: string, options?: VoicePlaybackOptions) => Promise<void>;
   stop: () => void;
   ensureHealth: () => Promise<void>;
   markAutoSpoken: (id: string) => void;
@@ -123,7 +126,7 @@ export const useTtsStore = create<TtsStore>((set, get) => ({
 
   markAutoSpoken: (id: string) => set({ autoSpokenId: id }),
 
-  speak: async (id: string, text: string) => {
+  speak: async (id: string, text: string, options: VoicePlaybackOptions = {}) => {
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -138,18 +141,20 @@ export const useTtsStore = create<TtsStore>((set, get) => ({
     controller = ac;
 
     try {
-      const voice = savedVoicePreferences();
-      if (voice.voiceProfile === 'jarvis-multilingual' && voice.outputLanguage === 'zh') {
+      const voice = { ...savedVoicePreferences(), ...options };
+      if ((voice.voiceProfile === 'jarvis-multilingual' && voice.outputLanguage === 'zh')
+        || voice.voiceProfile?.startsWith('user-')) {
         const player = new PcmPlayer();
         pcmPlayer = player;
         const response = await apiFetch('/v1/speech/stream', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ac.signal,
           body: JSON.stringify({ text: trimmed, voice_profile: voice.voiceProfile,
-            character_id: voice.characterId, output_language: 'zh', speed: voice.speed }),
+            character_id: voice.characterId, output_language: voice.outputLanguage, speed: voice.speed }),
         });
         if (mine !== token) { player.stop(); return; }
         if (response.ok && response.body) {
-          if (response.headers.get('X-Voice-Id') !== 'jarvis-high') throw new Error('Unexpected streaming voice');
+          const expectedVoice = voice.voiceProfile?.startsWith('user-') ? voice.voiceProfile : 'jarvis-high';
+          if (response.headers.get('X-Voice-Id') !== expectedVoice) throw new Error('Unexpected streaming voice');
           const rate = Number(response.headers.get('X-Sample-Rate'));
           await player.play(response.body, rate, ac.signal, () => {
             if (mine === token) set({ state: 'speaking' });

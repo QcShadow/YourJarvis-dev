@@ -193,6 +193,10 @@ def create_app(
         Optional JarvisConfig for other settings.
     """
     original_engine = engine
+    if config is not None:
+        from openjarvis.engine.third_party_api import with_third_party_api
+
+        engine = with_third_party_api(engine, config, engine_name)
     security_enabled = config is not None and getattr(
         getattr(config, "security", None), "enabled", False
     )
@@ -513,6 +517,9 @@ def create_app(
     from openjarvis.server.work_routes import router as work_router
 
     app.include_router(work_router)
+    from openjarvis.server.voice_pack_routes import router as voice_pack_router
+
+    app.include_router(voice_pack_router)
     app.include_router(dashboard_router)
     app.include_router(comparison_router)
     app.include_router(create_connectors_router())

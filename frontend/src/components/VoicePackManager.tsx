@@ -1,0 +1,132 @@
+import { useState } from 'react';
+import { useAppStore } from '../lib/store';
+import { useTtsStore } from '../lib/tts';
+import { responseLanguage } from '../lib/voice-settings';
+import { deleteVoicePack, exportVoicePack, importVoicePack, renameVoicePack } from '../lib/voice-packs';
+import type { VoiceProfile } from '../lib/voice-packs';
+
+export function VoicePackManager({ voices, onChanged }: { voices: VoiceProfile[]; onChanged: () => void }) {
+  const settings = useAppStore((s) => s.settings);
+  const update = useAppStore((s) => s.updateSettings);
+  const zh = settings.interfaceLanguage === 'zh-CN';
+  const [files, setFiles] = useState<File[]>([]);
+  const [name, setName] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const [referenceLanguage, setReferenceLanguage] = useState('zh');
+  const [speakerId, setSpeakerId] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState('');
+  const [editedName, setEditedName] = useState('');
+  const [pendingDelete, setPendingDelete] = useState('');
+  const [inputKey, setInputKey] = useState(0);
+  const previewError = useTtsStore((s) => s.errorId?.startsWith('preview-') ? s.error : null);
+  const style = { background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' };
+  const button = 'rounded-lg px-3 py-2 disabled:opacity-40';
+  const hasAudio = files.some((f) => f.name.toLowerCase().endsWith('.wav'));
+  const hasPiper = files.some((f) => f.name.toLowerCase().endsWith('.onnx'));
+  const library = voices.filter((v) => v.user_owned);
+
+  const perform = async (action: () => Promise<void>) => {
+    setBusy(true); setError(''); setMessage('');
+    try { await action(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setBusy(false); }
+  };
+
+  return <section className="mt-4 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }} aria-label={zh ? '我的音色库' : 'My voice library'}>
+    <h3 className="font-medium">{zh ? '我的音色库' : 'My voice library'}</h3>
+    <p className="mt-2 text-xs opacity-70">{zh
+      ? '支持参考录音 WAV＋对应文字、Piper ONNX＋JSON，以及 .jvoice 语音包。本机保存，可导出分享；导入后先试听，再选择使用。'
+      : 'Import reference WAV + transcript, Piper ONNX + JSON, or a .jvoice pack. Stored locally; preview before selecting.'}</p>
+    <form className="mt-3 space-y-3" onSubmit={(event) => {
+      event.preventDefault();
+      void perform(async () => {
+        const imported = await importVoicePack(files, name, transcript, referenceLanguage, speakerId);
+        setFiles([]); setName(''); setTranscript(''); setInputKey((key) => key + 1);
+        setMessage(zh ? `已导入：${imported.name}。${imported.installed ? '可以试听。' : '需要安装对应引擎。'}`
+          : `Imported: ${imported.name}. ${imported.installed ? 'Ready to preview.' : 'Engine installation required.'}`);
+        onChanged();
+      });
+    }}>
+      <label className="block">{zh ? '选择音色文件（可多选）' : 'Voice files (multiple allowed)'}
+        <input key={inputKey} type="file" multiple accept=".wav,.txt,.onnx,.json,.jvoice,.zip" disabled={busy}
+          className="mt-1 block w-full text-xs" onChange={(e) => setFiles(Array.from(e.target.files || []))} />
+      </label>
+      <label className="block">{zh ? '音色名称（语音包可沿用内置名称）' : 'Name (optional for packaged voices)'}
+        <input value={name} maxLength={80} disabled={busy} style={style} className="mt-1 w-full rounded-lg px-3 py-2"
+          onChange={(e) => setName(e.target.value)} />
+      </label>
+      {hasAudio && <>
+        <label className="block">{zh ? '录音对应文字' : 'Reference transcript'}
+          <textarea value={transcript} maxLength={3000} rows={3} disabled={busy} style={style}
+            className="mt-1 w-full rounded-lg px-3 py-2" onChange={(e) => setTranscript(e.target.value)} />
+        </label>
+        <p className="text-xs opacity-70">{zh ? '填写录音中实际说出的内容，也可同时选择 UTF-8 TXT。录音需为 1–30 秒、16 位 PCM WAV，建议 5–15 秒单人清晰讲话。'
+          : 'Enter the exact words or include a UTF-8 TXT file. Use 1–30 seconds of 16-bit PCM WAV; 5–15 seconds of clear solo speech is recommended.'}</p>
+        <label>{zh ? '录音语言' : 'Reference language'} <select value={referenceLanguage} disabled={busy} style={style}
+          className="rounded-lg px-3 py-2" onChange={(e) => setReferenceLanguage(e.target.value)}>
+          <option value="zh">中文</option><option value="en">English</option>
+        </select></label>
+      </>}
+      {hasPiper && <label className="block">{zh ? '说话人编号（单音色模型填 0）' : 'Speaker ID (0 for single-speaker models)'}
+        <input type="number" min={0} max={9999} step={1} value={speakerId} disabled={busy} style={style}
+          className="ml-2 w-24 rounded-lg px-3 py-2" onChange={(e) => setSpeakerId(Number(e.target.value))} />
+      </label>}
+      <button type="submit" disabled={busy || !files.length} style={style} className={button}>
+        {busy ? zh ? '正在处理…' : 'Processing…' : zh ? '导入音色' : 'Import voice'}</button>
+    </form>
+    {message && <p role="status" className="mt-3 text-xs">{message}</p>}
+    {error && <p role="alert" className="mt-3 text-xs">{error}</p>}
+    {previewError && <p role="alert" className="mt-3 text-xs">{previewError}</p>}
+    {!library.length && <p className="mt-4 text-xs opacity-70">{zh ? '还没有导入自定义音色。' : 'No custom voices imported yet.'}</p>}
+    <ul className="mt-4 space-y-3">
+      {library.map((voice) => {
+        const chosen = voice.id === settings.voiceProfileZh || voice.id === settings.voiceProfileEn;
+        const current = responseLanguage(settings);
+        const language = (voice.languages.includes(current) ? current : voice.languages[0]) as 'zh' | 'en';
+        return <li key={voice.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
+          {editing === voice.id ? <form className="flex flex-wrap gap-2" onSubmit={(e) => {
+            e.preventDefault(); void perform(async () => { await renameVoicePack(voice.id, editedName); setEditing(''); onChanged(); });
+          }}><input aria-label={zh ? '新名称' : 'New name'} value={editedName} maxLength={80} style={style}
+            className="rounded-lg px-3 py-2" onChange={(e) => setEditedName(e.target.value)} />
+            <button disabled={busy || !editedName.trim()} style={style} className={button}>{zh ? '保存名称' : 'Save name'}</button>
+            <button type="button" onClick={() => setEditing('')} className={button}>{zh ? '取消' : 'Cancel'}</button></form>
+            : <div className="font-medium">{voice.name}</div>}
+          <p className="mt-1 text-xs opacity-70">{voice.kind === 'reference' ? zh ? '参考录音' : 'Reference voice' : 'Piper'} · {voice.languages.join('/')}
+            {' · '}{voice.installed ? zh ? '已导入，可试听' : 'Imported, available to preview' : zh ? '缺少引擎或文件' : 'Engine or assets missing'}
+            {chosen ? zh ? ' · 已选择' : ' · Selected' : ''}</p>
+          {voice.note && <p className="mt-1 text-xs opacity-70">{voice.note}</p>}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" disabled={busy || !voice.installed} style={style} className={button}
+              onClick={() => void useTtsStore.getState().speak(`preview-${voice.id}`, language === 'zh'
+                ? '我在。系统运行正常，我们可以开始了。' : "I'm here. Systems are operational.",
+              { voiceProfile: voice.id, outputLanguage: language, characterId: settings.characterId })}>{zh ? '试听' : 'Preview'}</button>
+            <button type="button" disabled={busy || !voice.installed} style={style} className={button} onClick={() => {
+              useTtsStore.getState().stop();
+              update({ outputLanguage: language, voiceOutputEnabled: true,
+                ...(language === 'zh' ? { voiceProfileZh: voice.id } : { voiceProfileEn: voice.id }) });
+            }}>{zh ? `用于${language === 'zh' ? '中文' : '英文'}朗读` : `Use for ${language} speech`}</button>
+            <button type="button" disabled={busy} style={style} className={button} onClick={() => { setEditing(voice.id); setEditedName(voice.name); }}>
+              {zh ? '重命名' : 'Rename'}</button>
+            <button type="button" disabled={busy} style={style} className={button} onClick={() => void perform(async () => {
+              const blob = await exportVoicePack(voice.id); const url = URL.createObjectURL(blob);
+              const link = document.createElement('a'); link.href = url; link.download = `${voice.id}.jvoice`;
+              document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            })}>{zh ? '导出' : 'Export'}</button>
+            <button type="button" disabled={busy || chosen} style={style} className={button}
+              title={chosen ? zh ? '请先切换已选择的音色' : 'Switch selected voice first' : undefined}
+              onClick={() => setPendingDelete(voice.id)}>{zh ? '删除' : 'Delete'}</button>
+          </div>
+          {pendingDelete === voice.id && <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs">{zh ? '删除本机保存的这个音色？' : 'Delete this voice from the local library?'}</span>
+            <button type="button" disabled={busy} style={style} className={button} onClick={() => void perform(async () => {
+              useTtsStore.getState().stop(); await deleteVoicePack(voice.id); setPendingDelete(''); onChanged();
+            })}>{zh ? '确认删除' : 'Confirm delete'}</button>
+            <button type="button" className={button} onClick={() => setPendingDelete('')}>{zh ? '取消' : 'Cancel'}</button>
+          </div>}
+        </li>;
+      })}
+    </ul>
+  </section>;
+}

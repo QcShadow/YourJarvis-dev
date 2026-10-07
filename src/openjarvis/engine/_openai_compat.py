@@ -220,11 +220,13 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         chunk = json.loads(data_str)
                     except json.JSONDecodeError:
                         continue
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
                     if chunk.get("error"):
                         raise EngineConnectionError(
                             f"{self.engine_id} inference stream failed"
                         )
+                    # OpenAI gateways may send an empty choices usage trailer.
+                    choice = next(iter(chunk.get("choices") or []), {})
+                    delta = choice.get("delta") or {}
                     content = delta.get("content")
                     if content:
                         yield content
@@ -281,12 +283,12 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                         chunk = json.loads(data_str)
                     except json.JSONDecodeError:
                         continue
-                    choice = chunk.get("choices", [{}])[0]
                     if chunk.get("error"):
                         raise EngineConnectionError(
                             f"{self.engine_id} inference stream failed"
                         )
-                    delta = choice.get("delta", {})
+                    choice = next(iter(chunk.get("choices") or []), {})
+                    delta = choice.get("delta") or {}
                     finish = choice.get("finish_reason")
                     content = delta.get("content")
                     tool_calls = delta.get("tool_calls")

@@ -32,7 +32,7 @@ export function voiceActivityLabel(phase: string, zh: boolean): string {
     synthesizing: ['正在准备朗读', 'Preparing speech'],
     speaking: ['正在朗读，可说打断词', 'Speaking — interrupt phrases are available'],
     error: ['语音暂时不可用', 'Voice unavailable'],
-    stopped: ['接听已暂停', 'Listening paused'],
+    stopped: ['接听未运行', 'Microphone is stopped'],
   };
   return (labels[phase] || labels.starting)[zh ? 0 : 1];
 }

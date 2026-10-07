@@ -56,8 +56,13 @@ def _make_engine(key: str, config: JarvisConfig) -> InferenceEngine:
         import os
 
         cfg = config.engine.ollama
-        if os.environ.get("JARVIS_PORTABLE_CLIENT") == "1" and os.environ.get("JARVIS_LOCAL_OLLAMA"):
-            return cls(host=os.environ["JARVIS_LOCAL_OLLAMA"], num_ctx=cfg.num_ctx, num_gpu=cfg.num_gpu)
+        local_host = os.environ.get("JARVIS_LOCAL_OLLAMA")
+        if local_host:
+            return cls(
+                host=local_host,
+                num_ctx=cfg.num_ctx,
+                num_gpu=cfg.num_gpu,
+            )
         return cls(host=cfg.host or None, num_ctx=cfg.num_ctx, num_gpu=cfg.num_gpu)
 
     # LiteLLM cannot enumerate every model supported by every provider.  Its

@@ -16,7 +16,7 @@
 
 **YourJarvis Link** 是 YourJarvis 的 Windows 朋友版。通过中文图形向导安装运行环境、应用和所需模型，支持轻量本地模型、兼容 API 或 JARVIS 共享主机。
 
-> **当前正式版：0.1.3** · 下载 **`JARVIS-Setup-0.1.3.exe`** 后直接双击。首次安装需要联网准备资源，完成后默认本地模型与已安装的本地语音可离线使用。
+> **当前正式版：0.1.5** · 下载 **`JARVIS-Setup-0.1.5.exe`** 后直接双击。首次安装需要联网准备资源，完成后默认本地模型与已安装的本地语音可离线使用。
 
 ## 下载与版本
 
@@ -24,7 +24,7 @@
 | :--- | :--- | :--- |
 | **Gitee** | [国内发行版](https://gitee.com/QcShadow/your-jarvis-link/releases) | 国内网络优先选择 |
 | **GitHub** | [GitHub Releases](https://github.com/QcShadow/YourJarvis-link/releases) | 同版本安装包与发行说明 |
-| **版本说明** | [0.1.3 更新记录](https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.3) | 安装、资源下载与启动修复 |
+| **版本说明** | [0.1.5 更新记录](https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.5) | 一键更新、安装器视觉优化与开发能力开放 |
 
 在发行版附件中选择安装 **EXE**。资源分块由安装器自动下载、合并与校验，无需手动解压或输入命令。
 
@@ -41,7 +41,7 @@
 
 ## 首次安装
 
-1. **下载安装包** — 从上方渠道获取 `JARVIS-Setup-0.1.3.exe`，双击运行。
+1. **下载安装包** — 从上方渠道获取 `JARVIS-Setup-0.1.5.exe`，双击运行。
 2. **选择位置与方案** — 使用默认位置或独立文件夹；首次体验建议选择「轻量本地模型 + 先使用文字」。
 3. **等待安装与自检** — 向导自动准备依赖和模型，通过实际启动检查后才显示完成。
 4. **开始对话** — 使用桌面快捷方式或安装目录内的 `JARVIS.exe` 启动。
@@ -95,19 +95,17 @@
 </details>
 
 <details>
-<summary><strong>如何手动校验 0.1.3 安装包？</strong></summary>
+<summary><strong>如何手动校验 0.1.5 安装包？</strong></summary>
 
 在安装包所在目录运行 PowerShell：
 
 ```powershell
-Get-FileHash .\JARVIS-Setup-0.1.3.exe -Algorithm SHA256
+Get-FileHash .\JARVIS-Setup-0.1.5.exe -Algorithm SHA256
 ```
 
-0.1.3 正式 EXE 的 SHA-256：
+0.1.5 正式 EXE 的 SHA-256：
 
-```text
-5a12c6377991f3d340c559da6488631e6fbe3d02df6586cf8a4d8f3a8b90d1a3
-```
+`417f3c445d598d57c37bdefcba2e9ce17854cbdeaf8f6c99749e1ca0a30e48b4`
 
 </details>
 

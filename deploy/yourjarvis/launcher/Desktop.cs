@@ -55,6 +55,8 @@ internal sealed class JarvisWindow : Form
     private readonly System.Windows.Forms.Timer healthTimer = new System.Windows.Forms.Timer { Interval = 5000 };
     private const int Hotkey = 0x4A56;
     private readonly string root = AppDomain.CurrentDomain.BaseDirectory;
+    private readonly bool development = File.Exists(Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "development-runtime.json"));
     private readonly WebView2 web = new WebView2();
     private readonly Label loading = new Label();
     private readonly FlowLayoutPanel recovery = new FlowLayoutPanel();
@@ -81,7 +83,7 @@ internal sealed class JarvisWindow : Form
     {
         startHidden = hidden;
         debug = enableDebug;
-        Text = "JARVIS";
+        Text = development ? "JARVIS Development" : "JARVIS";
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         Size = new Size(1280, 800);
@@ -123,6 +125,7 @@ internal sealed class JarvisWindow : Form
         showItem.Click += delegate { ShowAssistant(); };
         pauseItem.Click += async delegate { await PauseConversation(); };
         updateItem.Click += async delegate { await CheckForUpdates(true); };
+        updateItem.Visible = !development;
         quitItem.Click += async delegate { await Quit(); };
         tray.Icon = Icon;
         tray.Text = "JARVIS";
@@ -143,7 +146,7 @@ internal sealed class JarvisWindow : Form
             CenterToScreen();
             if (startHidden) Hide();
             await StartAssistant();
-            await CheckForUpdates(false);
+            if (!development) await CheckForUpdates(false);
         };
         var activationThread = new Thread(delegate() {
             while (!exiting) {
@@ -210,7 +213,7 @@ internal sealed class JarvisWindow : Form
             recovery.Visible=false; loading.Visible=true; web.Visible=false; loading.Text="正在启动贾维斯…";
             if (!File.Exists(Path.Combine(root, "config.toml"))
                 || !File.Exists(Path.Combine(root, "src", ".venv", "Scripts", "python.exe"))
-                || !File.Exists(Path.Combine(root,"install-complete.json")))
+                || (!development && !File.Exists(Path.Combine(root,"install-complete.json"))))
             {
                 await RunInstaller();
             }
@@ -331,7 +334,7 @@ internal sealed class JarvisWindow : Form
                     + "\n" + (english ? "Latest: " : "最新版本：") + update.LatestVersion;
                 if (!String.IsNullOrWhiteSpace(update.Notes)) message += "\n\n" + update.Notes;
                 if (interactive) {
-                    var answer = MessageBox.Show(message + "\n\n" + (english ? "Download now?" : "现在下载吗？"),
+                    var answer = MessageBox.Show(message + "\n\n" + (english ? "Download and restart now?" : "现在下载并重启更新吗？"),
                         "JARVIS", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                     if (answer == DialogResult.Yes) await DownloadUpdate(update);
                 } else {
@@ -357,9 +360,16 @@ internal sealed class JarvisWindow : Form
         try {
             var progress = new Progress<int>(value => tray.BalloonTipText = (english ? "Downloading... " : "正在下载… ") + value + "%");
             string path = await JarvisUpdateChecker.DownloadAsync(root, update, progress);
-            MessageBox.Show((english ? "Update downloaded to:\n" : "更新包已下载到：\n") + path
-                + (english ? "\n\nClose JARVIS, run the installer, and choose the existing installation folder." : "\n\n请从托盘退出 JARVIS，运行下载的安装 EXE，选择原安装目录升级。现有配置和数据保留。"),
-                "JARVIS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var answer = MessageBox.Show((english ? "Update package downloaded. Restart JARVIS and apply it now?" : "更新包已下载完成。现在重启 JARVIS 并自动应用更新吗？"),
+                "JARVIS", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (answer == DialogResult.Yes) {
+                await StopListening();
+                JarvisUpdateChecker.LaunchAutomaticUpdate(path, root);
+                exiting = true; tray.Visible = false; Close();
+            } else {
+                MessageBox.Show((english ? "You can apply it later from:\n" : "稍后可从这里手动运行更新包：\n") + path,
+                    "JARVIS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         } catch (Exception error) {
             MessageBox.Show((english ? "Update download failed:\n" : "更新下载失败：\n") + error.Message,
                 "JARVIS", MessageBoxButtons.OK, MessageBoxIcon.Warning);

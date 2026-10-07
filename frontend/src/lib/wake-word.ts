@@ -1,6 +1,6 @@
 export function extractWakeCommand(transcript: string): { woke: boolean; command: string } {
   const text = transcript.trim();
-  const match = /(?:\bhey\b|\bhi\b|嘿|嗨|黑)[，,。.!！\s]*(?:jarvis\b|[贾賈][，,\s]*[维維][，,\s]*(?:斯|思)|[杰傑][维維]斯|加[维維]斯)/i.exec(text);
+  const match = /(?:\bhey\b|\bhi\b|嘿|嗨|黑)[，,。.!！\s]*(?:jarvis\b|[贾賈][，,\s]*[维維][，,\s]*(?:斯|思)|[杰傑][维維]斯|加[维維]斯)|(?:^|[，,。.!！?？:：;；])(?:jarvis\b|[贾賈][，,\s]*[维維][，,\s]*(?:斯|思)|[杰傑][维維]斯|加[维維]斯)(?![A-Za-z])/i.exec(text);
   if (!match) return { woke: false, command: '' };
   return { woke: true, command: text.slice(match.index + match[0].length).replace(/^[，,。.!！?？\s]+/, '').trim() };
 }

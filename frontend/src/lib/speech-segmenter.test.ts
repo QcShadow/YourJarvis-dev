@@ -40,4 +40,29 @@ describe('continuous wake microphone segmentation', () => {
     for (let i = 0; i < 99; i++) expect(vad.feed(frame())).toBeNull();
     expect(vad.feed(frame())).not.toBeNull();
   });
+
+  it('gives a long request more endpointing room without delaying short commands', () => {
+    const long = new SpeechSegmenter(16000, 1400);
+    for (let i = 0; i < 410; i++) expect(long.feed(frame(0.1))).toBeNull();
+    for (let i = 0; i < 89; i++) expect(long.feed(frame())).toBeNull();
+    expect(long.feed(frame())).not.toBeNull();
+
+    const short = new SpeechSegmenter(16000, 1400);
+    for (let i = 0; i < 15; i++) expect(short.feed(frame(0.1))).toBeNull();
+    for (let i = 0; i < 69; i++) expect(short.feed(frame())).toBeNull();
+    expect(short.feed(frame())).not.toBeNull();
+  });
+
+  it('learns the speaker pause cadence across utterances in one listening session', () => {
+    const vad = new SpeechSegmenter(16000, 1400);
+    for (let i = 0; i < 15; i++) expect(vad.feed(frame(0.1))).toBeNull();
+    for (let i = 0; i < 50; i++) expect(vad.feed(frame())).toBeNull();
+    for (let i = 0; i < 15; i++) expect(vad.feed(frame(0.1))).toBeNull();
+    for (let i = 0; i < 109; i++) expect(vad.feed(frame())).toBeNull();
+    expect(vad.feed(frame())).not.toBeNull();
+
+    for (let i = 0; i < 15; i++) expect(vad.feed(frame(0.1))).toBeNull();
+    for (let i = 0; i < 109; i++) expect(vad.feed(frame())).toBeNull();
+    expect(vad.feed(frame())).not.toBeNull();
+  });
 });

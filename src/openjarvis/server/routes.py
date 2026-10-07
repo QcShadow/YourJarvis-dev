@@ -313,6 +313,15 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
     model = request_body.model
+    if (
+        model.startswith("third-party/")
+        and _engine_key_for_model(engine, model) != "third_party_api"
+    ):
+        raise HTTPException(
+            400,
+            "Enable the third-party API and configure this model ID, "
+            "then restart the backend.",
+        )
     use_server_agent = (
         agent is not None
         and not request_body.tools
@@ -651,7 +660,14 @@ def _uses_direct_cloud_router(engine: Any, model: str) -> bool:
     """Whether *model* should bypass the configured engine for direct cloud."""
     from openjarvis.server.cloud_router import is_cloud_model
 
-    return is_cloud_model(model) and _engine_key_for_model(engine, model) != "litellm"
+    # Third-party model IDs contain '/', but belong to the configured gateway.
+    # Even when disabled/missing, never send them to the OpenRouter fallback.
+    return (
+        is_cloud_model(model)
+        and not model.startswith("third-party/")
+        and _engine_key_for_model(engine, model)
+        not in {"litellm", "api", "third_party_api"}
+    )
 
 
 def _handle_direct(
@@ -1206,7 +1222,12 @@ async def _handle_stream(
                     _inner = getattr(engine, "_inner", engine)
                     if isinstance(_inner, MultiEngine):
                         _routed = _inner._engine_for(model)
-                        if _routed is not None and getattr(_routed, "is_cloud", False):
+                        if (
+                            _routed is not None
+                            and getattr(_routed, "is_cloud", False)
+                            and _engine_key_for_model(engine, model)
+                            not in {"litellm", "api", "third_party_api"}
+                        ):
                             _use_local_fallback = True
                 except Exception:
                     pass
@@ -1356,7 +1377,8 @@ async def list_models(request: Request) -> ModelListResponse:
     model_ids = [
         m
         for m in all_ids
-        if not is_cloud_model(m) or _engine_key_for_model(engine, m) == "litellm"
+        if not is_cloud_model(m)
+        or _engine_key_for_model(engine, m) in {"litellm", "api", "third_party_api"}
     ]
     if not model_ids:
         model_ids = await list_local_models()
@@ -1366,13 +1388,24 @@ async def list_models(request: Request) -> ModelListResponse:
     # the UI auto-select nomic-embed-text and fail every generation with 400.
     model_ids = [m for m in model_ids if not is_embed_only_model(m)]
 
+    from openjarvis.engine.third_party_api import effective_config
+
+    config = getattr(request.app.state, "config", None)
+    source_name = effective_config(config).name if config is not None else "第三方 API"
+
     return ModelListResponse(
         data=[
             ModelObject(
                 id=mid,
+                display_name=(
+                    f"{source_name} / {mid.removeprefix('third-party/')}"
+                    if _engine_key_for_model(engine, mid) == "third_party_api"
+                    else None
+                ),
                 owned_by=(
-                    "litellm"
-                    if _engine_key_for_model(engine, mid) == "litellm"
+                    _engine_key_for_model(engine, mid)
+                    if _engine_key_for_model(engine, mid)
+                    in {"litellm", "api", "third_party_api"}
                     else "openjarvis"
                 ),
             )
@@ -1553,6 +1586,7 @@ async def savings(request: Request):
         # Exclude cloud model tokens from savings — only local
         # inference counts toward cost savings.
         _cloud_prefixes = (
+            "third-party/",
             "gpt-",
             "o1-",
             "o3-",
@@ -1668,6 +1702,57 @@ async def health(request: Request):
     if not healthy:
         raise HTTPException(status_code=503, detail="Engine unhealthy")
     return payload
+
+
+@router.get("/v1/assistant/status")
+async def assistant_status(request: Request):
+    """Return one compact, local-only status document for desktop harnesses.
+
+    This intentionally contains counters and phases only. It is safe for a
+    tray process to poll and does not expose prompts, transcripts, tool
+    arguments, or task output.
+    """
+    engine = request.app.state.engine
+    voice = getattr(request.app.state, "voice_runtime", None)
+    voice_snapshot = voice.snapshot() if voice is not None else {}
+    background = getattr(request.app.state, "background_work", None)
+    work = await background.summary() if background is not None else {
+        "counts": {}, "active": 0, "total": 0, "worker_running": False,
+    }
+    agent = getattr(request.app.state, "agent", None)
+    return {
+        "status": "ok" if engine.health() else "degraded",
+        "inference_available": bool(engine.health()),
+        "agent": getattr(agent, "agent_id", None)
+        or getattr(request.app.state, "agent_name", None),
+        "voice": {
+            "running": bool(voice_snapshot.get("running", False)),
+            "phase": voice_snapshot.get("phase", "stopped"),
+            "foreground": bool(voice_snapshot.get("foreground", False)),
+            "input_level": voice_snapshot.get("input_level", 0),
+            "pending_notifications": voice_snapshot.get("pending_notifications", 0),
+            "desired_enabled": getattr(
+                request.app.state, "voice_desired_enabled", None
+            ),
+            "restoring": bool(
+                getattr(request.app.state, "voice_restore_task", None) is not None
+                and not request.app.state.voice_restore_task.done()
+            ),
+        },
+        "background_work": {
+            "active": int(work.get("active", 0) or 0),
+            "total": int(work.get("total", 0) or 0),
+            "counts": (
+                work.get("counts", {})
+                if isinstance(work.get("counts", {}), dict)
+                else {}
+            ),
+            "worker_running": bool(work.get("worker_running", False)),
+        },
+        "uptime_seconds": max(
+            0, round(time.time() - request.app.state.session_start, 3)
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,8 @@ def extract_wake_command(text: str) -> tuple[bool, str]:
     text = normalize_transcript(text, "zh")
     match = re.search(
         r"(?:\bhey\b|\bhi\b|嘿|嗨|黑)[，,。.!！\s]*"
-        r"(?:jarvis\b|贾[，,\s]*维[，,\s]*(?:斯|思)|杰维斯|加维斯)",
+        r"(?:jarvis\b|贾[，,\s]*维[，,\s]*(?:斯|思)|杰维斯|加维斯)"
+        r"|(?:^|[，,。.!！?？:：;；])(?:jarvis\b|贾[，,\s]*维[，,\s]*(?:斯|思)|杰维斯|加维斯)(?![A-Za-z])",
         text,
         re.IGNORECASE,
     )
@@ -79,6 +80,58 @@ def spoken_reply(text: str, language: str = "zh", detail: str = "brief") -> str:
     return result
 
 
+def speech_chunks(
+    text: str, language: str = "zh", max_chars: int | None = None
+) -> list[str]:
+    """Split spoken text at natural boundaries for low-latency TTS.
+
+    The page keeps the complete answer.  This only changes how that answer is
+    fed to the synthesizer so a detailed reply can begin promptly and pause at
+    sentence or clause boundaries instead of becoming one very long request.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    limit = max_chars or (120 if language == "zh" else 240)
+    if limit < 8:
+        raise ValueError("Speech chunks must allow at least 8 characters")
+    sentences = [
+        part.strip()
+        for part in re.findall(r".+?(?:[。！？!?]+|\.(?=\s|$)|$)", text)
+        if part.strip()
+    ]
+    chunks: list[str] = []
+    current = ""
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            chunks.append(current.strip())
+            current = ""
+
+    for sentence in sentences:
+        separator = "" if language == "zh" or not current else " "
+        if current and len(current) + len(separator) + len(sentence) <= limit:
+            current += separator + sentence
+            continue
+        flush()
+        while len(sentence) > limit:
+            window = sentence[: limit + 1]
+            boundaries = list(re.finditer(r"[，,；;：:]\s*", window))
+            if language != "zh":
+                boundaries.extend(re.finditer(r"\s+", window))
+            useful = [match.end() for match in boundaries if match.end() >= limit // 2]
+            cut = max(useful) if useful else limit
+            part, sentence = sentence[:cut].strip(), sentence[cut:].strip()
+            if part and part[-1] not in "。！？.!?，,；;：:":
+                part += "，" if language == "zh" else ","
+            if part:
+                chunks.append(part)
+        current = sentence
+    flush()
+    return chunks
+
+
 DEFAULT_INTERRUPT_WORDS = ("停一下", "暂停", "别说了", "stop", "pause")
 
 
@@ -122,10 +175,12 @@ class UtteranceSegmenter:
 
     frame_ms = 20
 
-    def __init__(self, silence_ms: int = 1400, adaptive: bool = True) -> None:
+    def __init__(self, silence_ms: int = 1800, adaptive: bool = True) -> None:
         self.silence_ms = silence_ms
         self.adaptive = adaptive
         self.noise = 90.0
+        self.learned_pause_ms = 0.0
+        self.last_metrics: dict[str, float] = {}
         self.reset()
 
     def reset(self) -> None:
@@ -138,8 +193,15 @@ class UtteranceSegmenter:
     def end_pause_ms(self) -> float:
         # A speaker who pauses inside phrases gets more thinking room, while
         # short commands remain responsive. Bound the adjustment, not cadence.
-        extra = max(0.0, self.pause_ms * 1.5 - 600)
-        if self.voiced * self.frame_ms >= 4000:
+        cadence_pause = max(self.pause_ms, self.learned_pause_ms)
+        extra = max(0.0, cadence_pause * 1.5 - 600)
+        # A first long hesitation cannot teach us the speaker's cadence before
+        # it happens. Give longer utterances a small progressive allowance as
+        # well, while keeping short commands on the configured baseline.
+        spoken_span_ms = max(0, len(self.frames) - self.quiet) * self.frame_ms
+        if spoken_span_ms >= 4000:
+            extra += 200
+        if spoken_span_ms >= 8000:
             extra += 200
         return self.silence_ms + min(800, extra) if self.adaptive else self.silence_ms
 
@@ -159,6 +221,13 @@ class UtteranceSegmenter:
             if self.quiet * self.frame_ms >= 240:
                 pause = self.quiet * self.frame_ms
                 self.pause_ms = max(pause, self.pause_ms * 0.8)
+                if self.adaptive:
+                    bounded = min(1400.0, float(pause))
+                    self.learned_pause_ms = (
+                        bounded
+                        if not self.learned_pause_ms
+                        else self.learned_pause_ms * 0.75 + bounded * 0.25
+                    )
             self.voiced += 1
             self.quiet = 0
         else:
@@ -172,6 +241,14 @@ class UtteranceSegmenter:
         trim = max(0, self.quiet - 10)
         frames = self.frames[:-trim] if trim else self.frames
         result = _frames_to_wav(frames, 16000) if self.voiced >= 8 else None
+        if result is not None:
+            self.last_metrics = {
+                "utterance_ms": float(len(frames) * self.frame_ms),
+                "voiced_ms": float(self.voiced * self.frame_ms),
+                "endpoint_pause_ms": float(self.quiet * self.frame_ms),
+                "learned_pause_ms": round(self.learned_pause_ms, 1),
+                "noise_level": round(min(1.0, self.noise / 8000), 3),
+            }
         self.reset()
         return result
 
@@ -181,7 +258,7 @@ class VoiceOptions:
     language: str = "zh"
     voice_id: str = "zm_yunjian"
     speed: float = 1.1
-    silence_ms: int = 1400
+    silence_ms: int = 1800
     followup_seconds: float = 30.0
     speak: bool = True
     fast_model: str = "qwen3.5:9b"
@@ -231,6 +308,20 @@ class NativeVoiceRuntime:
         self.last_transcript = ""
         self.input_level = 0.0
         self.wake_count = 0
+        # Numeric-only audio diagnostics. Raw microphone audio is never retained.
+        self.audio_metrics: dict[str, float] = {
+            "utterance_ms": 0.0,
+            "voiced_ms": 0.0,
+            "endpoint_pause_ms": 0.0,
+            "learned_pause_ms": 0.0,
+            "noise_level": 0.0,
+            "queue_delay_ms": 0.0,
+            "transcription_ms": 0.0,
+            "endpoint_to_dispatch_ms": 0.0,
+            "queue_drops": 0.0,
+            "echo_rejections": 0.0,
+            "busy_ignored": 0.0,
+        }
         self.armed_until = 0.0
         self._stop = threading.Event()
         self._busy = threading.Event()
@@ -242,7 +333,9 @@ class NativeVoiceRuntime:
         self._warm_task: asyncio.Task | None = None
         self._ack_cache: dict[tuple, bytes] = {}
         self._synthesis_lock = threading.Lock()
-        self._queue: asyncio.Queue[tuple[bytes, bool] | None] = asyncio.Queue(maxsize=1)
+        self._queue: asyncio.Queue[tuple[bytes, bool, float] | None] = asyncio.Queue(
+            maxsize=1
+        )
         self._notification_lock = asyncio.Lock()
         self._pending_notifications: deque[tuple[str, str]] = deque(maxlen=8)
         self.last_notification = ""
@@ -260,6 +353,7 @@ class NativeVoiceRuntime:
             "model": self.options.fast_model,
             "last_transcript": self.last_transcript,
             "input_level": self.input_level,
+            "audio_metrics": dict(self.audio_metrics),
             "wake_count": self.wake_count,
             "followup_remaining": max(0, round(self.armed_until - time.monotonic(), 1)),
             "can_interrupt": bool(self._turn_task and not self._turn_task.done()),
@@ -298,6 +392,8 @@ class NativeVoiceRuntime:
         self._interrupt.clear()
         self.armed_until = 0.0
         self._queue = asyncio.Queue(maxsize=1)
+        for metric in self.audio_metrics:
+            self.audio_metrics[metric] = 0.0
         self._status("starting")
         loop = asyncio.get_running_loop()
         ready = loop.create_future()
@@ -309,9 +405,11 @@ class NativeVoiceRuntime:
                 else:
                     ready.set_result(None)
 
-        def enqueue(audio: bytes, controls_only: bool) -> None:
+        def enqueue(audio: bytes, controls_only: bool, captured_at: float) -> None:
             if not self._stop.is_set() and self._queue.empty():
-                self._queue.put_nowait((audio, controls_only))
+                self._queue.put_nowait((audio, controls_only, captured_at))
+            elif not self._stop.is_set():
+                self.audio_metrics["queue_drops"] += 1
 
         def capture() -> None:
             try:
@@ -339,7 +437,14 @@ class NativeVoiceRuntime:
                         )
                         audio = segmenter.feed(bytes(raw))
                         if audio:
-                            loop.call_soon_threadsafe(enqueue, audio, controls_only)
+                            captured_at = time.monotonic()
+                            loop.call_soon_threadsafe(
+                                self.audio_metrics.update,
+                                dict(segmenter.last_metrics),
+                            )
+                            loop.call_soon_threadsafe(
+                                enqueue, audio, controls_only, captured_at
+                            )
                             controls_only = False
                         elif not segmenter.frames:
                             controls_only = False
@@ -419,16 +524,20 @@ class NativeVoiceRuntime:
         while not self._stop.is_set():
             try:
                 try:
-                    audio = await asyncio.wait_for(self._queue.get(), timeout=0.5)
+                    queued = await asyncio.wait_for(self._queue.get(), timeout=0.5)
                 except asyncio.TimeoutError:
                     if self.phase == "armed" and time.monotonic() >= self.armed_until:
                         self.foreground = False
                         self._status("listening")
                         await self._drain_notifications()
                     continue
-                if audio is None:
+                if queued is None:
                     return
-                audio, controls_only = audio
+                audio, controls_only, captured_at = queued
+                transcribe_started = time.monotonic()
+                self.audio_metrics["queue_delay_ms"] = round(
+                    (transcribe_started - captured_at) * 1000, 1
+                )
                 if not self._busy.is_set():
                     self._status("transcribing")
                 result = await asyncio.to_thread(
@@ -436,6 +545,13 @@ class NativeVoiceRuntime:
                     audio,
                     format="wav",
                     language=self.options.language,
+                )
+                transcribed_at = time.monotonic()
+                self.audio_metrics["transcription_ms"] = round(
+                    (transcribed_at - transcribe_started) * 1000, 1
+                )
+                self.audio_metrics["endpoint_to_dispatch_ms"] = round(
+                    (transcribed_at - captured_at) * 1000, 1
                 )
                 if self._stop.is_set():
                     return
@@ -535,6 +651,7 @@ class NativeVoiceRuntime:
                 return re.sub(r"[\W_]+", "", value).casefold()
 
             if compact(text) and compact(text) in compact(self._spoken_text):
+                self.audio_metrics["echo_rejections"] += 1
                 return
         if re.fullmatch(
             r"(?:先暂停(?:一下)?吧?|暂停对话|回到后台|切回文字|"
@@ -556,6 +673,7 @@ class NativeVoiceRuntime:
             return
         if busy or controls_only:
             if not (interrupted or woke):
+                self.audio_metrics["busy_ignored"] += 1
                 return
             await self._cancel_turn()
         if interrupted:
@@ -913,25 +1031,39 @@ class NativeVoiceRuntime:
             iterator = None
             try:
                 with self._synthesis_lock:
-                    iterator = self.synthesize_stream(
-                        text,
-                        voice_id=options.voice_id,
-                        speed=options.speed,
-                        output_format="wav",
-                        **(
-                            {"voice_profile": options.voice_profile}
-                            if options.voice_profile
-                            else {}
-                        ),
-                    )
-                    for chunk in iterator:
+                    for spoken_chunk in speech_chunks(
+                        text, options.response_language
+                    ):
                         if (
                             cancelled.is_set()
                             or self._stop.is_set()
                             or self._interrupt.is_set()
                         ):
                             break
-                        put(chunk)
+                        iterator = self.synthesize_stream(
+                            spoken_chunk,
+                            voice_id=options.voice_id,
+                            speed=options.speed,
+                            output_format="wav",
+                            **(
+                                {"voice_profile": options.voice_profile}
+                                if options.voice_profile
+                                else {}
+                            ),
+                        )
+                        try:
+                            for chunk in iterator:
+                                if (
+                                    cancelled.is_set()
+                                    or self._stop.is_set()
+                                    or self._interrupt.is_set()
+                                ):
+                                    break
+                                put(chunk)
+                        finally:
+                            if hasattr(iterator, "close"):
+                                iterator.close()
+                            iterator = None
                 put(None)
             except Exception as error:
                 put(error)

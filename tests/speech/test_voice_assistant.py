@@ -18,6 +18,7 @@ from openjarvis.speech.assistant import (
     extract_background_command,
     extract_interrupt,
     extract_wake_command,
+    speech_chunks,
     speech_detail_switch,
     spoken_reply,
 )
@@ -83,6 +84,54 @@ def test_adaptive_endpoint_waits_longer_for_slow_phrasing():
     assert vad.feed(frame()) is not None
 
 
+def test_long_request_gets_progressive_endpoint_room_but_short_command_does_not():
+    long_request = UtteranceSegmenter(silence_ms=1400)
+    for _ in range(410):
+        assert long_request.feed(frame(1000)) is None
+    for _ in range(89):
+        assert long_request.feed(frame()) is None
+    assert long_request.feed(frame()) is not None
+
+    short_command = UtteranceSegmenter(silence_ms=1400)
+    for _ in range(15):
+        assert short_command.feed(frame(1000)) is None
+    for _ in range(69):
+        assert short_command.feed(frame()) is None
+    assert short_command.feed(frame()) is not None
+
+
+def test_segmenter_learns_speakers_pause_cadence_across_utterances():
+    vad = UtteranceSegmenter(silence_ms=1400)
+    for _ in range(15):
+        assert vad.feed(frame(1000)) is None
+    for _ in range(50):  # A one-second thinking pause teaches this session.
+        assert vad.feed(frame()) is None
+    for _ in range(15):
+        assert vad.feed(frame(1000)) is None
+    for _ in range(109):
+        assert vad.feed(frame()) is None
+    assert vad.feed(frame()) is not None
+    assert vad.learned_pause_ms == 1000
+    assert set(vad.last_metrics) == {
+        "utterance_ms",
+        "voiced_ms",
+        "endpoint_pause_ms",
+        "learned_pause_ms",
+        "noise_level",
+    }
+    assert vad.last_metrics["utterance_ms"] == 1800.0
+    assert vad.last_metrics["voiced_ms"] == 600.0
+    assert vad.last_metrics["endpoint_pause_ms"] == 2200.0
+    assert vad.last_metrics["learned_pause_ms"] == 1000.0
+    assert all(isinstance(value, float) for value in vad.last_metrics.values())
+
+    for _ in range(15):
+        assert vad.feed(frame(1000)) is None
+    for _ in range(109):
+        assert vad.feed(frame()) is None
+    assert vad.feed(frame()) is not None
+
+
 @pytest.mark.anyio
 async def test_capture_fault_then_stop_does_not_cancel_tool_drain_twice():
     runtime, _ = make_runtime()
@@ -142,6 +191,8 @@ async def test_output_language_and_voice_cache_do_not_follow_transcript_text():
         ("嘿，賈維斯", (True, "")),
         ("黑贾维斯。", (True, "")),
         ("嘿 贾 维 思，打开浏览器", (True, "打开浏览器")),
+        ("贾维斯，打开浏览器", (True, "打开浏览器")),
+        ("Jarvis, open the browser", (True, "open the browser")),
         ("Shanghai is nice", (False, "")),
         ("They Jarvis is a name", (False, "")),
         ("你好", (False, "")),
@@ -174,6 +225,22 @@ def test_spoken_reply_is_short_complete_and_hides_thoughts_and_code():
     assert result == "我是 贾维斯。已经处理好了。"
     assert len(result) <= 90
     assert spoken_reply("长" * 300) == "详细内容已放在页面上。"
+
+
+def test_speech_chunks_follow_sentences_and_bound_long_clauses():
+    assert speech_chunks("第一句。第二句。", "zh", 8) == ["第一句。第二句。"]
+    assert speech_chunks("第一句话。第二句话。", "zh", 8) == [
+        "第一句话。",
+        "第二句话。",
+    ]
+    chunks = speech_chunks(
+        "这是一段比较长的说明，需要在自然的逗号位置停顿，然后继续完成后半句话。",
+        "zh",
+        16,
+    )
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 17 for chunk in chunks)
+    assert "自然的逗号位置" in "".join(chunks)
 
 
 def test_interrupts_are_explicit_leading_configurable_controls():
@@ -223,6 +290,7 @@ async def test_sleep_gate_rejects_interrupt_without_wake_and_echo_is_ignored():
     runtime._spoken_text = "你可以说停一下来打断我。"
     await runtime._dispatch_transcript("停一下", controls_only=True)
     assert runtime.armed_until == 0
+    assert runtime.audio_metrics["echo_rejections"] == 1
     runtime.armed_until = time.monotonic() - 1
     await runtime._dispatch_transcript("打开浏览器")
     await runtime._turn_task
@@ -477,6 +545,7 @@ async def test_standby_phrase_from_speaker_echo_cannot_pause_the_listener():
     await runtime._dispatch_transcript("先暂停吧", controls_only=True)
     assert runtime.foreground and runtime.armed_until > time.monotonic()
     assert not calls
+    assert runtime.audio_metrics["echo_rejections"] == 1
     await runtime.stop()
 
 
@@ -616,6 +685,56 @@ async def test_stop_waits_for_playback_before_restart_clears_stop_signal():
     await asyncio.to_thread(started.wait, 1)
     await runtime.stop()
     assert finished.is_set() and runtime._play_task is None
+
+
+@pytest.mark.anyio
+async def test_streaming_playback_synthesizes_detailed_reply_in_natural_chunks(
+    monkeypatch,
+):
+    synthesized = []
+    played = []
+
+    def synthesize_stream(text, **kwargs):
+        synthesized.append(text)
+        yield b"\0\0" * 160, 16000
+
+    class Output:
+        def start(self):
+            pass
+
+        def write(self, pcm):
+            played.append(pcm)
+
+        def stop(self):
+            pass
+
+        def abort(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sounddevice",
+        SimpleNamespace(RawOutputStream=lambda **kwargs: Output()),
+    )
+    runtime = NativeVoiceRuntime(
+        transcribe=MagicMock(),
+        respond=MagicMock(),
+        synthesize=MagicMock(),
+        synthesize_stream=synthesize_stream,
+    )
+    detailed = "开场说明。" + "甲" * 80 + "。" + "乙" * 80 + "。"
+    await asyncio.to_thread(
+        runtime._play_stream,
+        detailed,
+        VoiceOptions(speak=True, output_language="zh"),
+        asyncio.get_running_loop(),
+    )
+    assert len(synthesized) == 2
+    assert "开场说明" in synthesized[0] and "乙" * 20 in synthesized[1]
+    assert len(played) == 2
 
 
 @pytest.mark.anyio

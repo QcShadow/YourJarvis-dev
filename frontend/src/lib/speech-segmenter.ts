@@ -7,8 +7,9 @@ export class SpeechSegmenter {
   private quietMs = 0;
   private lengthMs = 0;
   private pauseMs = 0;
+  private learnedPauseMs = 0;
 
-  constructor(private readonly rate: number, private readonly silenceMs = 1400, private readonly adaptive = true) {}
+  constructor(private readonly rate: number, private readonly silenceMs = 1800, private readonly adaptive = true) {}
 
   reset() {
     this.pre = []; this.frames = [];
@@ -32,11 +33,22 @@ export class SpeechSegmenter {
     } else this.frames.push(copy);
     this.lengthMs += ms;
     if (loud) {
-      if (this.quietMs >= 240) this.pauseMs = Math.max(this.quietMs, this.pauseMs * 0.8);
+      if (this.quietMs >= 240) {
+        this.pauseMs = Math.max(this.quietMs, this.pauseMs * 0.8);
+        if (this.adaptive) {
+          const bounded = Math.min(1400, this.quietMs);
+          this.learnedPauseMs = this.learnedPauseMs
+            ? this.learnedPauseMs * 0.75 + bounded * 0.25
+            : bounded;
+        }
+      }
       this.voicedMs += ms; this.quietMs = 0;
     }
     else this.quietMs += ms;
-    const extra = this.adaptive ? Math.min(800, Math.max(0, this.pauseMs * 1.5 - 600) + (this.voicedMs >= 4000 ? 200 : 0)) : 0;
+    const spokenSpanMs = Math.max(0, this.lengthMs - this.quietMs);
+    const durationAllowance = (spokenSpanMs >= 4000 ? 200 : 0) + (spokenSpanMs >= 8000 ? 200 : 0);
+    const cadencePause = Math.max(this.pauseMs, this.learnedPauseMs);
+    const extra = this.adaptive ? Math.min(800, Math.max(0, cadencePause * 1.5 - 600) + durationAllowance) : 0;
     if (this.quietMs < this.silenceMs + extra && this.lengthMs < 40000) return null;
     const result = this.voicedMs >= 160 ? pcmWav(this.frames, this.rate) : null;
     this.reset();

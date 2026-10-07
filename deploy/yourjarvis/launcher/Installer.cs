@@ -37,6 +37,7 @@ internal sealed class InstallWizard : Form
     private readonly string source;
     private string root, secret = "", logPath;
     private readonly bool noLaunch;
+    private readonly bool autoUpdate;
     private int page;
     private bool running, cancelled;
     private Process worker;
@@ -50,7 +51,7 @@ internal sealed class InstallWizard : Form
     private readonly Label hint = new Label(), summary = new Label();
     private readonly ProgressBar progress = new ProgressBar();
     private readonly ListBox stages = new ListBox();
-    private readonly string[] steps = { "检查安装包和磁盘", "安装 Python 与依赖", "安装桌面窗口组件", "下载模型 / 测试 API", "准备所选语音", "保存配置和应用自检" };
+    private readonly string[] steps = { "检查安装包和磁盘", "安装 Python 与依赖", "安装桌面窗口组件", "下载模型 / 测试 API", "准备所选语音", "保存配置和应用自检", "完成并准备启动" };
     private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     private DateTime started;
     private readonly object logLock = new object();
@@ -58,19 +59,21 @@ internal sealed class InstallWizard : Form
 
     public InstallWizard(string packageRoot, string[] args)
     {
-        source = packageRoot; root = source; noLaunch = args.Contains("--no-launch");
-        Text = "JARVIS 0.1.4 · 安装向导";
+        source = packageRoot; root = source; noLaunch = args.Contains("--no-launch"); autoUpdate = args.Contains("--auto-update");
+        Text = "JARVIS 0.1.5 · 安装向导";
         Font = new Font("Microsoft YaHei UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 650); MinimumSize = Size; MaximizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen; BackColor = Color.FromArgb(245, 247, 251);
+        StartPosition = FormStartPosition.CenterScreen; BackColor = Color.FromArgb(244, 247, 252);
         heading.SetBounds(32, 24, 730, 42); heading.Font = new Font(Font.FontFamily, 22F, FontStyle.Bold);
         heading.ForeColor = Color.FromArgb(24, 47, 74);
         subtitle.SetBounds(34, 76, 726, 46); subtitle.ForeColor = Color.FromArgb(70, 83, 102);
-        content.SetBounds(32, 132, 736, 420); content.BackColor = Color.White;
+        content.SetBounds(32, 132, 736, 420); content.BackColor = Color.White; content.Padding = new Padding(1);
+        content.Paint += delegate(object sender, PaintEventArgs e) { using (var pen = new Pen(Color.FromArgb(221, 228, 238))) e.Graphics.DrawRectangle(pen, 0, 0, content.Width - 1, content.Height - 1); };
         back.Text = "上一步"; back.SetBounds(410, 590, 104, 38);
-        next.Text = "下一步"; next.SetBounds(526, 590, 124, 38); next.BackColor = Color.FromArgb(29, 87, 191); next.ForeColor = Color.White; next.FlatStyle = FlatStyle.Flat;
+        next.Text = "下一步"; next.SetBounds(526, 590, 124, 38);
         close.Text = "退出"; close.SetBounds(662, 590, 104, 38);
+        StyleButton(back, false); StyleButton(next, true); StyleButton(close, false);
         elapsed.SetBounds(34, 592, 360, 38);
         Controls.AddRange(new Control[] { heading, subtitle, content, back, next, close, elapsed });
         back.Click += delegate { if (!running) { page = Math.Max(0, page - 1); ShowPage(); } };
@@ -104,7 +107,20 @@ internal sealed class InstallWizard : Form
         output.SetBounds(24, 284, 560, 114); output.Multiline = true; output.ReadOnly = true; output.ScrollBars = ScrollBars.Vertical; output.Font = new Font("Consolas", 9F);
         logs.Text = "打开日志"; logs.SetBounds(594, 284, 118, 36);
         logs.Click += delegate { if (!String.IsNullOrEmpty(logPath) && File.Exists(logPath)) Process.Start(new ProcessStartInfo("notepad.exe", Quote(logPath)) { UseShellExecute = true }); };
+        if (autoUpdate) { directory.Text = source; preserve.Checked = true; preserve.Enabled = true; page = 2; }
         ShowPage();
+        if (autoUpdate) Shown += async delegate { await Install(); };
+    }
+
+    private void StyleButton(Button button, bool primary)
+    {
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = primary ? 0 : 1;
+        button.FlatAppearance.BorderColor = Color.FromArgb(201, 211, 225);
+        button.BackColor = primary ? Color.FromArgb(29, 87, 191) : Color.White;
+        button.ForeColor = primary ? Color.White : Color.FromArgb(36, 53, 75);
+        button.Font = new Font(Font.FontFamily, 10F, FontStyle.Bold);
+        button.Cursor = Cursors.Hand;
     }
 
     private static string Quote(string value) { return "\"" + value.Replace("\"", "\\\"") + "\""; }
@@ -218,7 +234,7 @@ internal sealed class InstallWizard : Form
         {
             await Task.Run((Action)CopyPackage);
             Directory.CreateDirectory(Path.Combine(root, "logs")); logPath = Path.Combine(root, "logs", "installer-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".log");
-            var request = new Dictionary<string, object> { {"profile", new[] {"lite","custom-local","api"}[profile.SelectedIndex]}, {"model",model.Text.Trim()}, {"url",url.Text.Trim()}, {"key",key.Text}, {"voice",new[] {"text","zh","zh-female","en"}[voice.SelectedIndex]}, {"preserve",preserve.Checked}, {"shortcut",shortcut.Checked}, {"channel",channel.SelectedIndex==0?"gitee":"github"} };
+            var request = new Dictionary<string, object> { {"profile", new[] {"lite","custom-local","api"}[profile.SelectedIndex]}, {"model",model.Text.Trim()}, {"url",url.Text.Trim()}, {"key",key.Text}, {"voice",new[] {"text","zh","zh-female","en"}[voice.SelectedIndex]}, {"preserve",preserve.Checked}, {"shortcut",shortcut.Checked}, {"channel",channel.SelectedIndex==0?"gitee":"github"}, {"full_features", true} };
             var info = new ProcessStartInfo("powershell.exe", "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + Quote(Path.Combine(root,"install-worker.ps1")) + " -Root " + Quote(root)) { WorkingDirectory=root, UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true, RedirectStandardOutput=true, RedirectStandardError=true, StandardOutputEncoding=new UTF8Encoding(false), StandardErrorEncoding=new UTF8Encoding(false) };
             worker = new Process { StartInfo=info };
             worker.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { Log(e.Data); };

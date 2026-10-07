@@ -40,6 +40,7 @@ import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Deskt
 import { useTtsStore } from '../lib/tts';
 import { VoicePersonaSettings } from '../components/VoicePersonaSettings';
 import { DeploymentSettings } from '../components/DeploymentSettings';
+import { ThirdPartyAPISettings } from '../components/ThirdPartyAPISettings';
 import { PaletteSettings } from '../components/PaletteSettings';
 import { ModelScheduler } from '../components/ModelScheduler';
 import { fetchModels } from '../lib/api';
@@ -607,6 +608,7 @@ export function SettingsPage() {
 
           {/* Inference source */}
           {!isTauri() && <DeploymentSettings zh={zh} />}
+          {!isTauri() && <ThirdPartyAPISettings zh={zh} />}
           {!isTauri() && <ModelScheduler />}
           {isTauri() && <Section title="Inference source">
             <SettingRow label="Source" description="Where the app runs models. Applies after restart.">

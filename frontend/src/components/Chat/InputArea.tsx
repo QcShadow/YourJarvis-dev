@@ -277,7 +277,7 @@ export function InputArea() {
         const installed = useAppStore.getState().models.map((model) => model.id);
         const fast = installed.find((id) => id.startsWith('qwen3.5:9b')) ?? selectedModel;
         const strong = installed.find((id) => id.startsWith('deepseek-r1:14b')) ?? fast;
-        if (automaticModelRouting) {
+        if (automaticModelRouting && !selectedModel.startsWith('third-party/')) {
           setStreamState({ phase: 'Choosing model...' });
           try {
             const route = await routeModel(content, fast, strong);

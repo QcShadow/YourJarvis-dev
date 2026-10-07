@@ -1,7 +1,7 @@
 {
-  "version": "0.1.3",
-  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.3",
-  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.3/JARVIS-Setup-0.1.3.exe",
-  "sha256": "5a12c6377991f3d340c559da6488631e6fbe3d02df6586cf8a4d8f3a8b90d1a3",
-  "notes": "单 EXE 中文安装；Gitee 优先下载完整运行库和模型，续传及校验；真实后端和语音自检，修复中文路径和启动失败。"
+  "version": "0.1.5",
+  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.5",
+  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.5/JARVIS-Setup-0.1.5.exe",
+  "sha256": "417f3c445d598d57c37bdefcba2e9ce17854cbdeaf8f6c99749e1ca0a30e48b4",
+  "notes": "一键下载、重启并应用更新；重做安装/更新引导界面；朋友版开放长期记忆、时间、文件、目录、浏览器和联网搜索能力。"
 }

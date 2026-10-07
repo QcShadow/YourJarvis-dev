@@ -24,6 +24,11 @@ _WORKER_LOCK = threading.Lock()
 _WORKER_ID = "jarvis-high-qwen-local-v1"
 
 
+def _worker_identity() -> str:
+    instance = os.environ.get("JARVIS_VOICE_INSTANCE", "").strip()
+    return f"{_WORKER_ID}:{instance}" if instance else _WORKER_ID
+
+
 @TTSRegistry.register("jarvis")
 class JarvisTTSBackend(TTSBackend):
     """Use a single advertised timbre, accepting legacy GUI voice settings."""
@@ -35,6 +40,7 @@ class JarvisTTSBackend(TTSBackend):
         self.python, self.engine, self.device = voice_runtime(self.root)
         self.worker_script = self.root / "scripts/qwen_tts_server.py"
         self.url = os.environ.get("JARVIS_VOICE_URL", "http://127.0.0.1:3337")
+        self.worker_identity = _worker_identity()
         self.english = PiperTTSBackend()
         self._process = None
 
@@ -42,8 +48,10 @@ class JarvisTTSBackend(TTSBackend):
         try:
             with urllib.request.urlopen(self.url + "/health", timeout=2) as response:
                 data = json.load(response)
-            if data.get("identity") != _WORKER_ID:
-                raise RuntimeError(f"Voice address {self.url} is occupied by another service")
+            if data.get("identity") != self.worker_identity:
+                raise RuntimeError(
+                    f"Voice address {self.url} is occupied by another service"
+                )
             return bool(data.get("ready"))
         except (urllib.error.URLError, TimeoutError):
             return False
@@ -72,6 +80,8 @@ class JarvisTTSBackend(TTSBackend):
                         self.device,
                         "--port",
                         str(urlsplit(self.url).port or 3337),
+                        "--identity",
+                        self.worker_identity,
                     ],
                     cwd=str(self.root),
                     env=environment,

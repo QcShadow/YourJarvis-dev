@@ -40,7 +40,17 @@ def validate_request(data: dict) -> dict:
         ):
             raise ValueError("请填写完整的 http/https API 地址，密钥应填在密钥栏。")
         _ = parsed.port
-    return {**data, "profile": profile, "voice": voice, "model": model, "url": address}
+    # The packaged/friend edition exposes the same useful local capabilities as
+    # the development build.  Keep the value explicit in the request so an
+    # upgrade can preserve it without relying on a hidden environment flag.
+    return {
+        **data,
+        "profile": profile,
+        "voice": voice,
+        "model": model,
+        "url": address,
+        "full_features": bool(data.get("full_features", True)),
+    }
 
 
 def existing_request(root: Path) -> dict:
@@ -155,6 +165,7 @@ def run_action(root: Path, action: str, data: dict) -> None:
             base_url=data["url"],
             api_key_env="JARVIS_LLM_API_KEY",
             voice=data["voice"],
+            full_features=data.get("full_features", True),
         )
         if data["profile"] in {"api", "remote-host"}:
             key = data.get("key", "").strip()
@@ -177,6 +188,7 @@ def main() -> None:
     parser.add_argument("--base-url", default="")
     parser.add_argument("--voice", choices=VOICE_PRESETS, default="text")
     parser.add_argument("--api-key", default="")
+    parser.add_argument("--full-features", action="store_true", default=True)
     args = parser.parse_args()
     if args.action:
         try:
@@ -200,6 +212,7 @@ def main() -> None:
         base_url=args.base_url,
         api_key_env="JARVIS_LLM_API_KEY",
         voice=args.voice,
+        full_features=args.full_features,
     )
     api_key = args.api_key or __import__("os").environ.get("JARVIS_INSTALL_API_KEY", "")
     if api_key.strip():

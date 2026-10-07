@@ -382,6 +382,25 @@ class APIEngineConfig:
 
 
 @dataclass(slots=True)
+class USTCEngineConfig:
+    """Optional university gateway, alongside the primary engine."""
+
+    enabled: bool = False
+    host: str = "https://api.llm.ustc.edu.cn"
+    models: list[str] = field(default_factory=lambda: ["qwen-chat"])
+
+
+@dataclass(slots=True)
+class ThirdPartyAPIEngineConfig:
+    """Named OpenAI-compatible supplement, independent of the primary engine."""
+
+    enabled: bool = False
+    name: str = "第三方 API"
+    host: str = ""
+    models: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class VLLMEngineConfig:
     """Per-engine config for vLLM."""
 
@@ -490,6 +509,10 @@ class EngineConfig:
     default: str = "ollama"
     ollama: OllamaEngineConfig = field(default_factory=OllamaEngineConfig)
     api: APIEngineConfig = field(default_factory=APIEngineConfig)
+    ustc: USTCEngineConfig = field(default_factory=USTCEngineConfig)
+    third_party_api: ThirdPartyAPIEngineConfig = field(
+        default_factory=ThirdPartyAPIEngineConfig
+    )
     vllm: VLLMEngineConfig = field(default_factory=VLLMEngineConfig)
     sglang: SGLangEngineConfig = field(default_factory=SGLangEngineConfig)
     llamacpp: LlamaCppEngineConfig = field(default_factory=LlamaCppEngineConfig)

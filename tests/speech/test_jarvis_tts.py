@@ -65,6 +65,21 @@ def test_unrelated_service_is_not_accepted_as_voice_worker():
         backend._ready()
 
 
+def test_managed_desktop_requires_its_own_voice_worker(monkeypatch):
+    monkeypatch.setenv("JARVIS_VOICE_INSTANCE", "dev-instance")
+    backend = JarvisTTSBackend()
+    assert backend.worker_identity == "jarvis-high-qwen-local-v1:dev-instance"
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = (
+        b'{"identity": "jarvis-high-qwen-local-v1:friend-instance", "ready": true}'
+    )
+    with (
+        patch("urllib.request.urlopen", return_value=response),
+        pytest.raises(RuntimeError, match="occupied"),
+    ):
+        backend._ready()
+
+
 @pytest.mark.parametrize("speed", [0, float("nan"), float("inf"), 3])
 def test_invalid_speed(speed):
     with pytest.raises(ValueError, match="speed"):

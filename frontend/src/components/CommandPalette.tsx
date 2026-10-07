@@ -124,7 +124,7 @@ export function CommandPalette() {
 
   const filtered = tab === 'installed'
     ? (query
-        ? models.filter((m) => m.id.toLowerCase().includes(query.toLowerCase()))
+        ? models.filter((m) => (m.display_name || m.id).toLowerCase().includes(query.toLowerCase()) || m.id.toLowerCase().includes(query.toLowerCase()))
         : models)
     : tab === 'catalogue'
     ? CATALOGUE_MODELS.filter((m) =>
@@ -379,14 +379,14 @@ export function CommandPalette() {
                       className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
                       style={{ background: 'none', border: 'none', padding: 0 }}
                     >
-                      {model.owned_by === 'litellm' ? (
+                      {['litellm', 'api', 'third_party_api'].includes(model.owned_by) ? (
                         <Cloud size={16} style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }} />
                       ) : (
                         <Cpu size={16} style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text-tertiary)' }} />
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="text-sm truncate" style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text)', fontWeight: isActive ? 500 : 400 }}>
-                          {model.id}
+                          {model.display_name || model.id}
                         </div>
                       </div>
                       {isActive && (
@@ -395,7 +395,7 @@ export function CommandPalette() {
                         </span>
                       )}
                     </button>
-                    {model.owned_by !== 'litellm' && (
+                    {!['litellm', 'api', 'third_party_api'].includes(model.owned_by) && (
                       <button
                         onClick={() => handleDelete(model.id)}
                         disabled={isDeleting}

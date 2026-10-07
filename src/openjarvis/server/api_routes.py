@@ -1218,6 +1218,12 @@ async def synthesize_speech(request: Request, body: SpeechSynthesizeRequest):
         )
     except Exception as exc:
         logger.exception("Speech synthesis failed")
+        if (
+            profile
+            and profile.get("user_owned")
+            and isinstance(exc, (RuntimeError, ValueError))
+        ):
+            raise HTTPException(503, str(exc)) from exc
         raise HTTPException(status_code=500, detail="Speech synthesis failed") from exc
 
     return Response(
@@ -1251,7 +1257,7 @@ async def stream_speech(request: Request, body: SpeechSynthesizeRequest):
             )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        if profile["backend"] != "jarvis":
+        if profile["backend"] not in {"jarvis", "qwen-reference"}:
             raise HTTPException(501, "This voice uses the WAV endpoint")
         try:
             backend = await profile_backend(request.app, profile)
@@ -1270,15 +1276,18 @@ async def stream_speech(request: Request, body: SpeechSynthesizeRequest):
     speed = body.speed if body.speed is not None else speed
 
     def chunks():
-        iterator = backend.synthesize_stream(
-            text, voice_id=voice_id, speed=speed, output_format="wav"
-        )
+        if profile:
+            from openjarvis.speech.profiles import stream_profile
+
+            iterator = stream_profile(
+                backend, profile, text, speed=speed, output_format="wav"
+            )
+        else:
+            iterator = backend.synthesize_stream(
+                text, voice_id=voice_id, speed=speed, output_format="wav"
+            )
         try:
-            if profile:
-                with backend._voice_profile_lock:
-                    yield from iterator
-            else:
-                yield from iterator
+            yield from iterator
         finally:
             iterator.close()
 
@@ -1292,6 +1301,9 @@ async def stream_speech(request: Request, body: SpeechSynthesizeRequest):
     except ValueError as exc:
         iterator.close()
         raise HTTPException(422, str(exc)) from exc
+    except RuntimeError as exc:
+        iterator.close()
+        raise HTTPException(503, str(exc)) from exc
     if first is None:
         raise HTTPException(502, "The voice returned no audio")
     rate = first[1]

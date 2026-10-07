@@ -152,6 +152,11 @@ def configuration_text(
             "file_read",
             "browser_open",
             "web_search",
+            "memory_manage",
+            "memory_store",
+            "memory_retrieve",
+            "memory_search",
+            "memory_index",
             "shell_exec",
             "code_interpreter",
         ]

@@ -18,6 +18,7 @@ import type { ManagedAgent } from './api';
 import { isEmbedOnlyModel } from './model-capabilities';
 import { serializeToolCallArguments } from './tool-call';
 import type { ColorScheme } from './palettes';
+import { migrateSpeechPause, VOICE_TIMING_VERSION } from './voice-settings';
 
 export interface CachedConnector {
   connector_id: string;
@@ -106,6 +107,7 @@ export interface Settings {
   speechPauseMs: number;
   voiceIdleSeconds: number;
   interruptWords: string[];
+  voiceTimingVersion: number;
   wakeWordEnabled: boolean;
   automaticModelRouting: boolean;
   apiUrl: string;
@@ -135,9 +137,10 @@ function loadSettings(): Settings {
     characterId: 'jarvis-local',
     voiceProfileZh: 'kokoro-zh-yunjian',
     voiceProfileEn: 'kokoro-en-george',
-    speechPauseMs: 1400,
+    speechPauseMs: 1800,
     voiceIdleSeconds: 30,
     interruptWords: ['停一下', '暂停', '别说了', 'stop', 'pause'],
+    voiceTimingVersion: VOICE_TIMING_VERSION,
     wakeWordEnabled: true,
     automaticModelRouting: true,
     apiUrl: '',
@@ -159,7 +162,13 @@ function loadSettings(): Settings {
     const saved = JSON.parse(raw);
     // Pause now means standby. Only the explicit speech master switch closes
     // the microphone; an old pause preference must not disable wake forever.
-    return { ...defaults, ...saved, wakeWordEnabled: saved.speechEnabled !== false };
+    return {
+      ...defaults,
+      ...saved,
+      speechPauseMs: migrateSpeechPause(saved.speechPauseMs, saved.voiceTimingVersion),
+      voiceTimingVersion: VOICE_TIMING_VERSION,
+      wakeWordEnabled: saved.speechEnabled !== false,
+    };
   } catch {
     return defaults;
   }

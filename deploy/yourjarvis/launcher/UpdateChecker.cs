@@ -150,6 +150,27 @@ internal static class JarvisUpdateChecker
         return destination;
     }
 
+    public static void LaunchAutomaticUpdate(string packagePath, string root)
+    {
+        string updates = Path.GetFullPath(Path.Combine(root, "updates"));
+        string package = Path.GetFullPath(packagePath);
+        if (!package.StartsWith(updates + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("更新包位置无效。");
+        if (!File.Exists(package) || !String.Equals(Path.GetExtension(package), ".exe", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("当前更新包不支持一键安装，请手动运行安装包。");
+        string args = "--update " + Quote(root) + " " + Process.GetCurrentProcess().Id;
+        Process.Start(new ProcessStartInfo(package, args) {
+            WorkingDirectory = root,
+            UseShellExecute = true,
+            WindowStyle = ProcessWindowStyle.Normal,
+        });
+    }
+
+    private static string Quote(string value)
+    {
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
+    }
+
     internal static int CompareVersions(string left, string right)
     {
         Version leftVersion = ParseVersion(left);

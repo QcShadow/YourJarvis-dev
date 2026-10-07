@@ -18,6 +18,15 @@ interface VoiceState {
   messages: ChatMessage[];
   last_transcript?: string;
   input_level?: number;
+  audio_metrics?: {
+    utterance_ms?: number;
+    endpoint_pause_ms?: number;
+    transcription_ms?: number;
+    queue_delay_ms?: number;
+    queue_drops?: number;
+    echo_rejections?: number;
+    busy_ignored?: number;
+  };
   followup_remaining?: number;
   foreground?: boolean;
   speech_detail?: 'brief' | 'full';
@@ -154,6 +163,12 @@ export function BackgroundVoiceListener() {
     synthesizing: 'Preparing speech', speaking: 'Jarvis is speaking', stopped: 'Microphone is stopped',
   };
   const problem = error || pollError || voice?.error;
+  const metrics = voice?.audio_metrics;
+  const timing = metrics?.utterance_ms
+    ? zh
+      ? `语音 ${(metrics.utterance_ms / 1000).toFixed(1)} 秒 · 句尾 ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)} 秒 · 识别 ${((metrics.transcription_ms || 0) / 1000).toFixed(1)} 秒`
+      : `Speech ${(metrics.utterance_ms / 1000).toFixed(1)}s · endpoint ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)}s · ASR ${((metrics.transcription_ms || 0) / 1000).toFixed(1)}s`
+    : '';
   // The chat composer contains the full live monitor. Keep this compact control
   // on other pages without overlapping the input area or repeating transcripts.
   return <div role="status" className="fixed bottom-3 left-3 z-50 flex max-w-xl items-center gap-3 rounded-xl px-3 py-2 text-xs shadow-md"
@@ -161,6 +176,7 @@ export function BackgroundVoiceListener() {
     <div><div>{problem || labels[voice?.phase || 'starting'] || voice?.phase}</div>
       <meter min={0} max={1} value={voice?.input_level || 0} aria-label={zh ? '麦克风音量' : 'Microphone level'} className="mt-1 h-1 w-20" />
       {voice?.last_transcript && <div className="mt-1 opacity-70" data-i18n-ignore>{zh ? '最近听到：' : 'Last heard: '}{voice.last_transcript}</div>}
+      {timing && <div className="mt-1 opacity-60" title={zh ? '仅记录时长和计数，不保存麦克风录音' : 'Timings and counts only; microphone audio is not stored'}>{timing}</div>}
     </div>
     <button onClick={() => void pauseVoiceConversation()}
       aria-label={zh ? '暂停语音接听' : 'Pause listening'}>{zh ? '暂停' : 'Pause'}</button>

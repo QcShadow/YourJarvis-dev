@@ -3,17 +3,15 @@ import { apiFetch } from '../lib/api';
 import { useAppStore } from '../lib/store';
 import { useTtsStore } from '../lib/tts';
 import { characterPreset, responseLanguage, selectedVoiceProfile } from '../lib/voice-settings';
-
-interface VoiceProfile {
-  id: string; name: string; languages: string[]; characters: string[];
-  backend: string; installed: boolean; experimental: boolean; note?: string;
-}
+import type { VoiceProfile } from '../lib/voice-packs';
+import { VoicePackManager } from './VoicePackManager';
 
 export function VoicePersonaSettings() {
   const settings = useAppStore((s) => s.settings);
   const update = useAppStore((s) => s.updateSettings);
   const [voices, setVoices] = useState<VoiceProfile[]>([]);
   const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
   const zh = settings.interfaceLanguage === 'zh-CN';
   const language = responseLanguage(settings);
   const selected = selectedVoiceProfile(settings);
@@ -25,7 +23,7 @@ export function VoicePersonaSettings() {
       if (!disposed) { setVoices(data.voices); setError(''); }
     }).catch((reason) => { if (!disposed) setError(String(reason)); });
     return () => { disposed = true; };
-  }, [zh]);
+  }, [zh, revision]);
   const options = voices.filter((v) => v.languages.includes(language) && v.characters.includes(settings.characterId));
   const active = voices.find((v) => v.id === selected);
   const style = { background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' };
@@ -73,12 +71,13 @@ export function VoicePersonaSettings() {
     {active && <p className="mt-2 text-xs opacity-70">{zh ? '当前：' : 'Active: '}{active.backend} / {active.name} · {language}</p>}
     {active?.note && <p className="mt-2 text-xs opacity-70">{active.note}</p>}
     {error && <p role="alert" className="mt-2 text-xs">{error}</p>}
+    <VoicePackManager voices={voices} onChanged={() => setRevision((value) => value + 1)} />
     <div className={row}>
       <label htmlFor="speech-pause">{zh ? '说完后的等待' : 'End-of-speech pause'} · {(settings.speechPauseMs / 1000).toFixed(1)}s</label>
       <input id="speech-pause" type="range" min={700} max={2500} step={100} value={settings.speechPauseMs}
         onChange={(e) => update({ speechPauseMs: Number(e.target.value) })} />
     </div>
-    <p className="text-xs opacity-70">{zh ? '这是基础等待时间；如果一句话里有较长停顿或持续讲话，系统会适当延长，不会只按固定秒数截断。默认 1.4 秒，可随你的说话节奏调整。' : 'A baseline, not a rigid cutoff: internal pauses and longer speech extend the wait modestly. Default 1.4 seconds; adjust to your cadence.'}</p>
+    <p className="text-xs opacity-70">{zh ? '这是基础等待时间；如果一句话里有较长停顿或持续讲话，系统会适当延长，不会只按固定秒数截断。默认 1.8 秒，短指令仍按基础等待快速响应。' : 'A baseline, not a rigid cutoff: internal pauses and longer speech extend the wait modestly. The 1.8 second default still keeps short commands responsive.'}</p>
     <div className={row}>
       <label htmlFor="voice-idle">{zh ? '无输入后需要重新唤醒' : 'Idle time before wake is required'}</label>
       <select id="voice-idle" value={settings.voiceIdleSeconds} style={style} className="rounded-lg px-3 py-2"

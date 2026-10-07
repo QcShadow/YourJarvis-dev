@@ -1,7 +1,11 @@
 ﻿function Get-FreeJarvisPort {
-    $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
-    try { $listener.Start(); return $listener.LocalEndpoint.Port }
-    finally { $listener.Stop() }
+    param([int[]] $Exclude = @())
+    do {
+        $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+        try { $listener.Start(); $port = [int]$listener.LocalEndpoint.Port }
+        finally { $listener.Stop() }
+    } while ($Exclude -contains $port)
+    return $port
 }
 function Start-JarvisService([string] $executable, [string[]] $arguments, [string] $stdout, [string] $stderr) {
     $result = & (Join-Path $script:JarvisRoot 'JARVIS-Spawn.exe') $script:JarvisRoot $executable $stdout $stderr @arguments
@@ -21,8 +25,9 @@ function Read-JarvisState([string] $name) {
     $file = Join-Path $script:JarvisRoot ('logs\' + $name + '.json')
     try { return ([IO.File]::ReadAllText($file) | ConvertFrom-Json) } catch { return $null }
 }
-function Write-JarvisState([string] $name, $process, [int] $port, [string] $identity = '') {
+function Write-JarvisState([string] $name, $process, [int] $port, [string] $identity = '', [string] $voiceUrl = '') {
     $state = @{root=$script:JarvisRoot;pid=$process.Id;started=[string]$process.StartTime.ToUniversalTime().Ticks;port=$port;url="http://127.0.0.1:$port";instance=$identity}
+    if ($voiceUrl) { $state.voice_url = $voiceUrl }
     [IO.File]::WriteAllText((Join-Path $script:JarvisRoot ('logs\' + $name + '.json')), ($state | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false)))
     return $state
 }

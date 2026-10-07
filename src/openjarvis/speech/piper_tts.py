@@ -10,8 +10,8 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from openjarvis.core.registry import TTSRegistry
 from openjarvis.core.paths import get_resource_dir
+from openjarvis.core.registry import TTSRegistry
 from openjarvis.speech.tts import TTSBackend, TTSResult
 
 _VOICE_ID = "jarvis-high"
@@ -29,6 +29,9 @@ class PiperTTSBackend(TTSBackend):
         model_path: str = "",
         chinese_voice_id: str = "zm_yunjian",
         strict_voice: bool = False,
+        voice_id: str = _VOICE_ID,
+        language: str = "en_GB",
+        speaker_id: int | None = None,
     ) -> None:
         root = get_resource_dir()
         self.model_path = (
@@ -38,6 +41,9 @@ class PiperTTSBackend(TTSBackend):
         )
         self.chinese_voice_id = chinese_voice_id
         self.strict_voice = strict_voice
+        self.voice_id = voice_id
+        self.language = language
+        self.speaker_id = speaker_id
         self._voice: Any = None
         self._chinese_backend: Any = None
         self._lock = threading.RLock()
@@ -63,7 +69,7 @@ class PiperTTSBackend(TTSBackend):
             return False
 
     def available_voices(self) -> list[str]:
-        return [_VOICE_ID]
+        return [self.voice_id]
 
     def synthesize(
         self,
@@ -96,7 +102,7 @@ class PiperTTSBackend(TTSBackend):
             # must still use JARVIS, rather than interpreting that ID in Piper.
             if (
                 voice_id
-                and voice_id != _VOICE_ID
+                and voice_id != self.voice_id
                 and (self.strict_voice or not voice_id.startswith(("zf_", "zm_")))
             ):
                 raise ValueError(f"Unknown Piper voice: {voice_id}")
@@ -110,6 +116,11 @@ class PiperTTSBackend(TTSBackend):
                     wav_file,
                     syn_config=SynthesisConfig(
                         length_scale=voice.config.length_scale / speed,
+                        **(
+                            {"speaker_id": self.speaker_id}
+                            if self.speaker_id is not None
+                            else {}
+                        ),
                     ),
                 )
             audio = output.getvalue()
@@ -119,10 +130,10 @@ class PiperTTSBackend(TTSBackend):
         return TTSResult(
             audio=audio,
             format="wav",
-            voice_id=_VOICE_ID,
+            voice_id=self.voice_id,
             sample_rate=rate,
             duration_seconds=duration,
-            metadata={"backend": "piper", "language": "en_GB"},
+            metadata={"backend": "piper", "language": self.language},
         )
 
     def close(self) -> None:

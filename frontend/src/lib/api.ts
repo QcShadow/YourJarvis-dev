@@ -277,7 +277,8 @@ const _CLOUD_PREFIXES = ['gpt-', 'o1-', 'o3-', 'o4-', 'claude-', 'gemini-', 'ope
 
 export async function preloadModel(modelName: string, owner?: string): Promise<void> {
   // Cloud models don't need Ollama preloading
-  if (owner === 'litellm' || _CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
+  if (['litellm', 'api', 'third_party_api'].includes(owner || '') || modelName.startsWith('third-party/')
+    || _CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
     return;
   }
   // Trigger Ollama to load the model into memory (empty prompt, no generation).

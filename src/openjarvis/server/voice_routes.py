@@ -24,7 +24,7 @@ class StartVoiceRequest(BaseModel):
     language: Literal["zh", "en"] = "zh"
     voice_id: str = "zm_yunjian"
     speed: float = Field(default=1.1, ge=0.8, le=1.8)
-    silence_ms: int = Field(default=1400, ge=700, le=2500)
+    silence_ms: int = Field(default=1800, ge=700, le=2500)
     speak: bool = True
     fast_model: str = "qwen3.5:9b"
     strong_model: str = "deepseek-r1:14b"
@@ -215,8 +215,9 @@ async def _start_voice(body: StartVoiceRequest, request: Request):
             )
 
         def synthesize(text, *, voice_profile, **kwargs):
-            backend, profile = app.state.voice_synthesizers[voice_profile]
-            return synthesize_profile(backend, profile, text, **kwargs)
+            if voice_profile != selected["id"]:
+                raise ValueError("Voice selection changed")
+            return synthesize_profile(tts, selected, text, **kwargs)
     else:
         tts = await _resolve_tts_backend(request) if body.speak else None
         synthesize = tts.synthesize if tts else lambda *args, **kwargs: None
@@ -231,10 +232,11 @@ async def _start_voice(body: StartVoiceRequest, request: Request):
         if body.voice_profile:
 
             def stream_callback(text, *, voice_profile, **kwargs):
-                backend, profile = app.state.voice_synthesizers[voice_profile]
-                kwargs["voice_id"] = profile["voice_id"]
-                with backend._voice_profile_lock:
-                    yield from backend.synthesize_stream(text, **kwargs)
+                from openjarvis.speech.profiles import stream_profile
+
+                if voice_profile != selected["id"]:
+                    raise ValueError("Voice selection changed")
+                yield from stream_profile(tts, selected, text, **kwargs)
         else:
             stream_callback = tts.synthesize_stream
     runtime = getattr(app.state, "voice_runtime", None)

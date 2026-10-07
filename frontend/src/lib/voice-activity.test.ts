@@ -10,6 +10,13 @@ describe('transient voice monitor', () => {
     expect(useVoiceActivity.getState().heard).toBe('');
     expect(useVoiceActivity.getState().phase).toBe('stopped');
   });
+
+  it('distinguishes a stopped microphone from wake-word standby', () => {
+    expect(voiceActivityLabel('stopped', true)).toBe('接听未运行');
+    expect(voiceActivityLabel('stopped', false)).toBe('Microphone is stopped');
+    expect(voiceActivityLabel('listening', true)).toContain('嘿贾维斯');
+    expect(voiceActivityLabel('listening', false)).toContain('Hey Jarvis');
+  });
   it('provides localized phase labels', () => {
     expect(voiceActivityLabel('armed', true)).toContain('我在听');
     expect(voiceActivityLabel('queuing', true)).toContain('后台');

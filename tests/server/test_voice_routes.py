@@ -163,6 +163,7 @@ def test_default_state_is_stopped():
 def test_voice_control_settings_are_bounded_and_preserve_disabled_interrupts():
     from openjarvis.server.voice_routes import StartVoiceRequest
 
+    assert StartVoiceRequest().silence_ms == 1800
     assert StartVoiceRequest(interrupt_words=[]).interrupt_words == ()
     assert StartVoiceRequest(interrupt_words=[" pause ", "pause"]).interrupt_words == (
         "pause",

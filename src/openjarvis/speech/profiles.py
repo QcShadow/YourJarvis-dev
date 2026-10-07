@@ -121,13 +121,18 @@ def resolve_profile(profile_id, language, character_id="jarvis-local"):
         raise ValueError("Output language must be zh or en")
     profile_id = profile_id or CHARACTERS[character_id]["default_voices"][language]
     profile = VOICES.get(profile_id)
+    if profile is None and profile_id.startswith("user-"):
+        from openjarvis.speech.voice_packs import profile as user_profile
+
+        profile = user_profile(profile_id)
     if profile is None:
         raise ValueError("Unknown voice profile")
     if language not in profile["languages"]:
         raise ValueError("The selected voice does not support the output language")
     if character_id not in profile["characters"]:
         raise ValueError("The selected voice is not bound to this character")
-    return profile
+    # Bind output language per request; one asset may be used in both languages.
+    return {**profile, "_output_language": language}
 
 
 def character_prompt(character_id, language):
@@ -180,11 +185,17 @@ def catalog():
                 )
             )
             if available and device == "cpu":
-                value = {**value, "note": (
-                    "内置中文跨语言音源，按需加载。CPU 合成可能需要较长等待；"
-                    "建议 16 GB 内存起，24 GB 更舒适。可切回云健或晓晓。"
-                )}
+                value = {
+                    **value,
+                    "note": (
+                        "内置中文跨语言音源，按需加载。CPU 合成可能需要较长等待；"
+                        "建议 16 GB 内存起，24 GB 更舒适。可切回云健或晓晓。"
+                    ),
+                }
         voices.append({**value, "installed": available})
+    from openjarvis.speech.voice_packs import catalog as user_catalog
+
+    voices.extend(user_catalog())
     return {"characters": list(CHARACTERS.values()), "voices": voices}
 
 
@@ -196,15 +207,36 @@ async def profile_backend(app, profile):
     if not hasattr(app.state, "voice_profile_loads"):
         app.state.voice_profile_loads = {}
     tasks = app.state.voice_profile_loads
-    key = profile["backend"]
+    engine = profile["backend"]
+    custom = profile.get("user_owned", False)
+    key = (engine, profile["id"], profile["_version"]) if custom else engine
     task = tasks.get(key)
     if task is None:
 
         def load():
-            kwargs = {"device": "cpu"} if key == "kokoro" else {}
-            if key == "piper":
+            if custom:
+                from openjarvis.speech.voice_packs import verify_assets
+
+                try:
+                    verify_assets(profile["id"])
+                except ValueError as exc:
+                    raise RuntimeError(str(exc)) from exc
+            kwargs = {"device": "cpu"} if engine == "kokoro" else {}
+            if engine == "piper":
                 kwargs = {"strict_voice": True}
-            backend = TTSRegistry.get(key)(**kwargs)
+                if custom:
+                    kwargs.update(
+                        model_path=str(Path(profile["_pack_root"]) / "voice.onnx"),
+                        voice_id=profile["voice_id"],
+                        language=profile["languages"][0],
+                        speaker_id=profile["_speaker_id"],
+                    )
+            if engine == "qwen-reference":
+                from openjarvis.speech.qwen_reference_tts import QwenReferenceTTSBackend
+
+                backend = QwenReferenceTTSBackend(profile)
+            else:
+                backend = TTSRegistry.get(engine)(**kwargs)
             if not backend.health():
                 raise RuntimeError(f"Selected voice backend '{key}' is unavailable")
             backend._voice_profile_lock = threading.Lock()
@@ -217,9 +249,13 @@ async def profile_backend(app, profile):
             backend = getattr(app.state, "tts_backend", None)
             config = getattr(app.state, "config", None)
             speech = getattr(config, "speech", None)
-            if pending is not None and getattr(speech, "tts_backend", None) == key:
+            if (
+                not custom
+                and pending is not None
+                and getattr(speech, "tts_backend", None) == engine
+            ):
                 backend = await asyncio.shield(pending)
-            if backend is not None and backend.backend_id == key:
+            if not custom and backend is not None and backend.backend_id == engine:
                 if not hasattr(backend, "_voice_profile_lock"):
                     backend._voice_profile_lock = threading.Lock()
                 return backend
@@ -228,7 +264,30 @@ async def profile_backend(app, profile):
         task = asyncio.create_task(load_or_reuse())
         tasks[key] = task
     try:
-        return await asyncio.shield(task)
+        selected = await asyncio.shield(task)
+        # Bound user-model residency. A request holding a backend may reload it
+        # after eviction; only close idle instances under their playback lock.
+        custom_keys = [k for k in tasks if isinstance(k, tuple)]
+        for old_key in custom_keys[:-4]:
+            old_task = tasks.get(old_key)
+            if (
+                old_key == key
+                or not old_task
+                or not old_task.done()
+                or old_task.cancelled()
+            ):
+                continue
+            if old_task.exception() is not None:
+                tasks.pop(old_key, None)
+                continue
+            old = old_task.result()
+            if old._voice_profile_lock.acquire(blocking=False):
+                try:
+                    old.close()
+                    tasks.pop(old_key, None)
+                finally:
+                    old._voice_profile_lock.release()
+        return selected
     except Exception:
         if task.done() and tasks.get(key) is task:
             tasks.pop(key, None)
@@ -237,8 +296,22 @@ async def profile_backend(app, profile):
 
 def synthesize_profile(backend, profile, text, **kwargs):
     kwargs["voice_id"] = profile["voice_id"]
-    with backend._voice_profile_lock:
+    if profile["backend"] == "qwen-reference":
+        kwargs["language"] = profile["_output_language"]
+    from openjarvis.speech.voice_packs import lease
+
+    with lease(profile["id"]), backend._voice_profile_lock:
         result = backend.synthesize(text, **kwargs)
     if result.voice_id and result.voice_id != profile["voice_id"]:
         raise RuntimeError("Voice backend returned a different voice; playback refused")
     return result
+
+
+def stream_profile(backend, profile, text, **kwargs):
+    from openjarvis.speech.voice_packs import lease
+
+    kwargs["voice_id"] = profile["voice_id"]
+    if profile["backend"] == "qwen-reference":
+        kwargs["language"] = profile["_output_language"]
+    with lease(profile["id"]), backend._voice_profile_lock:
+        yield from backend.synthesize_stream(text, **kwargs)

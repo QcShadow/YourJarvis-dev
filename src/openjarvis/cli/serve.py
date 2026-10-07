@@ -164,12 +164,12 @@ def serve(
     inject_credentials()
 
     config = load_config()
-    # A portable desktop owns its model service and never discovers the
-    # developer's other engines or inherited cloud credentials.
-    if os.environ.get("JARVIS_PORTABLE_CLIENT") == "1":
-        local_host = os.environ.get("JARVIS_LOCAL_OLLAMA")
-        if config.engine.default == "ollama" and local_host:
-            config.engine.ollama.host = local_host
+    # A supervised desktop owns its model service. Its exact loopback URL is
+    # stronger than a conventional port from config, which could belong to a
+    # different development tree or portable client.
+    local_host = os.environ.get("JARVIS_LOCAL_OLLAMA")
+    if config.engine.default == "ollama" and local_host:
+        config.engine.ollama.host = local_host
 
     # Resolve host/port from CLI args or config
     bind_host = host or config.server.host

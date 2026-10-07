@@ -107,6 +107,22 @@ def test_api_factory_uses_selected_key(monkeypatch):
         engine.close()
 
 
+def test_owned_local_ollama_overrides_conventional_config_port(monkeypatch):
+    cfg = JarvisConfig()
+    cfg.engine.ollama.host = "http://127.0.0.1:11434"
+    cfg.engine.ollama.num_gpu = 7
+    cfg.engine.ollama.num_ctx = 4096
+    monkeypatch.setenv("JARVIS_LOCAL_OLLAMA", "http://127.0.0.1:43123")
+    EngineRegistry.register_value("ollama", OllamaEngine)
+
+    engine = _make_engine("ollama", cfg)
+    try:
+        assert engine._host == "http://127.0.0.1:43123"
+        assert engine._runtime_options == {"num_gpu": 7, "num_ctx": 4096}
+    finally:
+        engine.close()
+
+
 @pytest.mark.asyncio
 async def test_lite_options_reach_sync_and_stream_paths():
     cfg = JarvisConfig()
