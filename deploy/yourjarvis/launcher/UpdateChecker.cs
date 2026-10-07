@@ -35,8 +35,9 @@ internal static class JarvisUpdateChecker
         string current = GetRequired(config, "version", "本地版本号");
         var manifestUrls = new List<string>();
         if (config.ContainsKey("manifestUrls")) {
-            var values = config["manifestUrls"] as object[];
-            if (values != null) foreach (object value in values) {
+            // Dictionary<string, object> JSON arrays may deserialize as ArrayList.
+            var values = config["manifestUrls"] as System.Collections.IEnumerable;
+            if (values != null && !(config["manifestUrls"] is string)) foreach (object value in values) {
                 string address = Convert.ToString(value).Trim();
                 if (address.Length > 0) manifestUrls.Add(address);
             } else {
