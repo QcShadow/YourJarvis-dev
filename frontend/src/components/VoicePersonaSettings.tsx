@@ -5,6 +5,7 @@ import { useTtsStore } from '../lib/tts';
 import { characterPreset, responseLanguage, selectedVoiceProfile } from '../lib/voice-settings';
 import type { VoiceProfile } from '../lib/voice-packs';
 import { VoicePackManager } from './VoicePackManager';
+import { SpeechResources } from './SpeechResources';
 
 export function VoicePersonaSettings() {
   const settings = useAppStore((s) => s.settings);
@@ -29,6 +30,7 @@ export function VoicePersonaSettings() {
   const style = { background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' };
   const row = 'flex flex-wrap items-center justify-between gap-3 py-3';
   return <div className="text-sm" data-i18n-ignore>
+    <SpeechResources />
     <div className={row}>
       <label htmlFor="character-profile">{zh ? '角色 / 人设' : 'Character / persona'}</label>
       <select id="character-profile" value={settings.characterId} style={style} className="rounded-lg px-3 py-2"

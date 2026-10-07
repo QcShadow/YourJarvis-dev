@@ -15,11 +15,13 @@ async function checked(response: Response): Promise<Response> {
 }
 
 export async function importVoicePack(files: File[], name: string, transcript: string,
-  referenceLanguage: string, speakerId: number): Promise<VoiceProfile> {
+  referenceLanguage: string, speakerId: number, generate = false): Promise<VoiceProfile> {
   const body = new FormData();
   files.forEach((file) => body.append('files', file));
   body.append('name', name); body.append('transcript', transcript);
   body.append('reference_language', referenceLanguage); body.append('speaker_id', String(speakerId));
+  body.append('embedding_only', String(!transcript.trim() && !files.some((f) => f.name.toLowerCase().endsWith('.txt'))));
+  body.append('generate', String(generate));
   return (await checked(await apiFetch('/v1/speech/packs/import', { method: 'POST', body }))).json();
 }
 

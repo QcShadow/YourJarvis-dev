@@ -44,5 +44,22 @@ https://www.nuget.org/packages/Microsoft.Web.WebView2/
 The unmodified, Microsoft-signed Evergreen x64 standalone runtime installer is
 mirrored as an optional resource and installed only when the runtime is missing.
 
-The experimental movie-inspired Piper JARVIS voice, Qwen-TTS weights and their
-isolated runtime are not included in the default sharing presets or archive.
+Version 0.1.6 offers optional Piper and Qwen resources through the speech
+download wizard. The default installer contains no personal recordings or
+movie-inspired JARVIS reference voice.
+
+Piper runtime 1.8.0 is from https://github.com/OHF-Voice/piper1-gpl,
+Copyright The Home Assistant Authors, GPL-3.0-or-later. The optional runtime
+retains its complete COPYING and dependency licenses. Corresponding upstream
+source for this unmodified version is available from the project's 1.8.0 release.
+Imported Piper models carry their own model/data terms; engine availability
+does not grant redistribution rights for a user's model.
+
+Qwen3-TTS-12Hz-0.6B-Base is from
+https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base,
+Copyright Qwen / Alibaba Cloud, Apache-2.0. The model is fetched separately at
+revision 5d83992436eae1d760afd27aff78a71d676296fc with fixed sizes and SHA-256
+checks. Its official model card and the full Apache-2.0 text in src/LICENSE are
+retained. The isolated CPU runtime retains CPython and installed dependency
+licenses and metadata. No local settings, configuration, keys, recordings,
+model cache credentials, or user databases are included.

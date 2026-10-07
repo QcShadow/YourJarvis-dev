@@ -122,3 +122,21 @@ def test_resource_cannot_overwrite_user_configuration(executable, tmp_path, name
     assert result.returncode != 0
     assert not (tmp_path / "credentials.toml").exists()
     assert not (tmp_path / "config.toml").exists()
+
+
+@pytest.mark.parametrize('path', ['models/speech/test/model.bin', '../outside.bin', 'config.toml'])
+def test_pinned_direct_model_files(executable, tmp_path, path):
+    data = b'official pinned model'
+    cache = tmp_path / 'cache/downloads'
+    cache.mkdir(parents=True)
+    (cache / 'qwen-fixture').write_bytes(data)
+    item = {'name': 'qwen-fixture', 'path': path, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(), 'urls': []}
+    manifest = tmp_path / 'resources.json'
+    manifest.write_text(json.dumps({'packs': {'direct': {'files': [item]}}, 'baseUrls': []}))
+    result = subprocess.run([str(executable), str(tmp_path), str(manifest), 'direct'], capture_output=True, timeout=20)
+    if path.startswith('models/'):
+        assert result.returncode == 0, result.stdout
+        assert (tmp_path / path).read_bytes() == data
+    else:
+        assert result.returncode != 0
+        assert not (tmp_path / 'config.toml').exists()

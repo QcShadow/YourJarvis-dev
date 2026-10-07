@@ -45,6 +45,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Resource downloader compilation failed' }
     "/out:$desktopOutput\JARVIS-Spawn.exe" /reference:System.Web.Extensions.dll `
     (Join-Path $launcher 'Spawn.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Service launcher compilation failed' }
+& $compiler /nologo /target:winexe /platform:x64 /optimize+ `
+    "/out:$desktopOutput\JARVIS-Speech.exe" `
+    "/win32manifest:$launcher\Desktop.manifest" `
+    /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll `
+    (Join-Path $launcher 'Maintenance.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Maintenance compilation failed' }
+Copy-Item -LiteralPath (Join-Path $desktopOutput 'JARVIS-Speech.exe') -Destination (Join-Path $desktopOutput 'JARVIS-Uninstall.exe') -Force
 Copy-Item -LiteralPath (Join-Path $launcher 'Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS-Install.exe.config') -Force
 Copy-Item -LiteralPath (Join-Path $desktopOutput 'JARVIS-Desktop.exe') -Destination (Join-Path $desktopOutput 'JARVIS.exe') -Force
 Copy-Item -LiteralPath (Join-Path $launcher 'Desktop.config') -Destination (Join-Path $desktopOutput 'JARVIS.exe.config') -Force

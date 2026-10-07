@@ -280,12 +280,30 @@ internal sealed class JarvisWindow : Form
                 if (IsLocal(e.Uri) && e.PermissionKind == CoreWebView2PermissionKind.Microphone)
                     e.State = CoreWebView2PermissionState.Allow;
             };
-            web.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs e) {
+            web.CoreWebView2.WebMessageReceived += async delegate(object sender, CoreWebView2WebMessageReceivedEventArgs e) {
                 if (!IsLocal(e.Source)) return;
                 try {
                     var data = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
                     if (data.ContainsKey("type") && Convert.ToString(data["type"]) == "language")
                         SetLanguage(data.ContainsKey("language") && Convert.ToString(data["language"]) == "en-US");
+                    if (!development && data.ContainsKey("type") && Convert.ToString(data["type"]) == "install-speech" && !starting && !checkingUpdate) {
+                        var selected=new List<string>();
+                        var allowed=new HashSet<string>(new[]{"asr-zh","asr-en","tts","piper","clone"});
+                        foreach(var value in (System.Collections.IEnumerable)data["choices"]) {
+                            string choice=Convert.ToString(value);if(!allowed.Contains(choice))return;
+                            if(!selected.Contains(choice))selected.Add(choice);
+                        }
+                        if(selected.Count==0)return;
+                        starting=true;
+                        try {
+                            await PauseConversation();await StopListening();
+                            loading.Text="正在安装语音资源，请在下载向导中继续。";loading.Visible=true;web.Visible=false;
+                            var info=new ProcessStartInfo(Path.Combine(root,"JARVIS-Speech.exe"),"--speech "+String.Join(",",selected)) {WorkingDirectory=root,UseShellExecute=true};
+                            using(var process=Process.Start(info)) await Task.Run((Action)process.WaitForExit);
+                        } catch(Exception error) {Log("Speech installation: "+error.Message);MessageBox.Show(error.Message,"JARVIS");}
+                        finally {starting=false;}
+                        await StartAssistant();
+                    }
                 } catch { }
             };
             }
@@ -325,7 +343,7 @@ internal sealed class JarvisWindow : Form
     }
     private async Task CheckForUpdates(bool interactive)
     {
-        if (checkingUpdate || exiting) return;
+        if (checkingUpdate || exiting || starting) return;
         checkingUpdate = true; updateItem.Enabled = false;
         try {
             JarvisUpdateInfo update = await JarvisUpdateChecker.CheckAsync(root);

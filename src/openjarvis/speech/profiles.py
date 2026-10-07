@@ -163,9 +163,15 @@ def catalog():
     from openjarvis.speech.jarvis_runtime import voice_runtime
 
     root = get_resource_dir()
+    from openjarvis.speech.resources import installed
+    readiness = installed(root)
     voices = []
     for value in VOICES.values():
-        available = value["backend"] == "kokoro"
+        available = value["backend"] == "kokoro" and readiness["tts"]
+        if available:
+            hf = root / "cache/huggingface/hub/models--hexgrad--Kokoro-82M"
+            revision = (hf / "refs/main").read_text().strip()
+            available = (hf / "snapshots" / revision / "voices" / (value["voice_id"] + ".pt")).is_file()
         if value["backend"] == "piper":
             model = root / "models/piper/jarvis-high/jarvis-high.onnx"
             available = model.is_file() and Path(str(model) + ".json").is_file()

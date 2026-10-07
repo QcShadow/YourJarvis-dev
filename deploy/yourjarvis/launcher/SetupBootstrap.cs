@@ -68,7 +68,7 @@ internal sealed class SetupWindow : Form {
     private readonly TextBox folder=new TextBox(); private readonly Button next=new Button(); private readonly ProgressBar bar=new ProgressBar(); private readonly Label status=new Label(); private bool busy;
     private readonly Color ink = Color.FromArgb(31, 43, 61), muted = Color.FromArgb(91, 106, 126), accent = Color.FromArgb(34, 111, 204);
     internal SetupWindow() {
-        Text="JARVIS 0.1.5 安装"; Font=new Font("Microsoft YaHei UI",10); ClientSize=new Size(720,390); AutoScaleMode=AutoScaleMode.Dpi; StartPosition=FormStartPosition.CenterScreen; MaximizeBox=false; BackColor=Color.FromArgb(246,249,253);
+        Text="JARVIS 0.1.6 安装"; Font=new Font("Microsoft YaHei UI",10); ClientSize=new Size(720,390); AutoScaleMode=AutoScaleMode.Dpi; StartPosition=FormStartPosition.CenterScreen; MaximizeBox=false; BackColor=Color.FromArgb(246,249,253);
         var header=new Panel {Left=0,Top=0,Width=720,Height=112,BackColor=Color.FromArgb(18,39,69)};
         var mark=new Label {Text="J",Left=28,Top=22,Width=52,Height=52,TextAlign=ContentAlignment.MiddleCenter,BackColor=accent,ForeColor=Color.White,Font=new Font(Font.FontFamily,26,FontStyle.Bold)};
         var title=new Label {Text="安装或升级 JARVIS",Left=94,Top=20,Width=580,Height=38,ForeColor=Color.White,Font=new Font(Font.FontFamily,21,FontStyle.Bold)};

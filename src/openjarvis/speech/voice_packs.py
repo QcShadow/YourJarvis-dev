@@ -186,7 +186,7 @@ def unpack(data):
         raise ValueError("语音包损坏或缺少 manifest.json") from exc
 
 
-def install(files, *, name="", transcript="", reference_language="zh", speaker_id=0):
+def install(files, *, name="", transcript="", reference_language="zh", speaker_id=0, embedding_only=False):
     """Validate in staging, then atomically publish an immutable asset directory."""
     if not files or len(files) > 3 or sum(len(data) for _, data in files) > MAX_UPLOAD:
         raise ValueError("请选择语音文件；总大小不能超过 256 MB")
@@ -204,6 +204,9 @@ def install(files, *, name="", transcript="", reference_language="zh", speaker_i
             raise ValueError("参考音色包需要 Qwen3-TTS-12Hz-0.6B-Base")
         reference_language = manifest.get("reference_language", "zh")
         speaker_id = manifest.get("speaker_id", 0)
+        embedding_only = manifest.get("embedding_only", False)
+        if not isinstance(embedding_only, bool):
+            raise ValueError("音色模式必须为布尔值")
     else:
         assets = {}
         for filename, data in files:
@@ -235,7 +238,7 @@ def install(files, *, name="", transcript="", reference_language="zh", speaker_i
             )
         except UnicodeDecodeError as exc:
             raise ValueError("对应文字需要 UTF-8 编码") from exc
-        if not text or len(text) > 3000:
+        if (not text and not embedding_only) or len(text) > 3000:
             raise ValueError("请填写录音中实际说出的文字（1–3000 字符）")
         if reference_language not in {"zh", "en"}:
             raise ValueError("参考语言需要中文或英文")
@@ -248,6 +251,7 @@ def install(files, *, name="", transcript="", reference_language="zh", speaker_i
             "engine_model": "Qwen3-TTS-12Hz-0.6B-Base",
             "languages": ["zh", "en"],
             "reference_language": reference_language,
+            "embedding_only": embedding_only,
             "assets": {"audio": "reference.wav", "transcript": "reference.txt"},
         }
     elif kind == "piper-model":
@@ -406,6 +410,7 @@ def profile(pack_id):
             json.dumps(value["hashes"], sort_keys=True).encode()
         ).hexdigest(),
         "_speaker_id": value.get("speaker_id", 0),
+        "_embedding_only": value.get("embedding_only", False),
     }
 
 

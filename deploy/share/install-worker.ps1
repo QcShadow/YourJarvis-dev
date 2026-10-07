@@ -110,7 +110,7 @@ try {
     Bridge 'write'
     Run $python @('-m','openjarvis.cli','setup','check')
     Run $python @((Join-Path $Root 'scripts\smoke_installed.py'),$Root)
-    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.5'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $Root 'install-complete.json'), (@{ version = '0.1.6'; completed = (Get-Date -Format o) } | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     Step 7 '安装完成，后端与模型已通过实际启动测试'
     exit 0
 } catch { [Console]::WriteLine('JARVIS_ERROR|' + $_.Exception.Message); exit 1 }

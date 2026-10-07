@@ -34,6 +34,7 @@ class QwenReferenceTTSBackend(JarvisTTSBackend):
             (path / "reference.wav").read_bytes()
         ).decode("ascii")
         self.reference_text = (path / "reference.txt").read_text(encoding="utf-8")
+        self.embedding_only = profile.get("_embedding_only", False)
 
     def health(self):
         return (
@@ -62,7 +63,8 @@ class QwenReferenceTTSBackend(JarvisTTSBackend):
             raise ValueError("Reference voices require nonempty text and WAV output")
         self._ensure_worker()
         with urllib.request.urlopen(self.url + "/health", timeout=2) as response:
-            if json.load(response).get("reference_api") != 1:
+            health = json.load(response)
+            if health.get("reference_api") != 1 or (self.embedding_only and health.get("embedding_only_api") != 1):
                 raise RuntimeError("语音服务需要重启以启用自定义音色")
         return {
             "text": text,
@@ -71,6 +73,7 @@ class QwenReferenceTTSBackend(JarvisTTSBackend):
             "language": "Chinese" if language == "zh" else "English",
             "reference_audio": self.reference_audio,
             "reference_text": self.reference_text,
+            "embedding_only": self.embedding_only,
         }
 
     def _request(self, endpoint, payload):

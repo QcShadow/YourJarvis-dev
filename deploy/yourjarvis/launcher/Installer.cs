@@ -60,7 +60,7 @@ internal sealed class InstallWizard : Form
     public InstallWizard(string packageRoot, string[] args)
     {
         source = packageRoot; root = source; noLaunch = args.Contains("--no-launch"); autoUpdate = args.Contains("--auto-update");
-        Text = "JARVIS 0.1.5 · 安装向导";
+        Text = "JARVIS 0.1.6 · 安装向导";
         Font = new Font("Microsoft YaHei UI", 10F);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 650); MinimumSize = Size; MaximizeBox = false;
@@ -261,6 +261,12 @@ internal sealed class InstallWizard : Form
             linkType.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, link,new object[] {Path.Combine(root,"JARVIS.exe")});
             linkType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty,null,link,new object[] {root});
             linkType.InvokeMember("Save",System.Reflection.BindingFlags.InvokeMethod,null,link,null);
+            object uninstall = shellType.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, shell, new object[] { Path.Combine(root,"卸载 JARVIS.lnk") });
+            Type uninstallType=uninstall.GetType();
+            uninstallType.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, uninstall,new object[] {Path.Combine(root,"JARVIS-Uninstall.exe")});
+            uninstallType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty,null,uninstall,new object[] {root});
+            uninstallType.InvokeMember("Save",System.Reflection.BindingFlags.InvokeMethod,null,uninstall,null);
+            System.Runtime.InteropServices.Marshal.FinalReleaseComObject(uninstall);
             System.Runtime.InteropServices.Marshal.FinalReleaseComObject(link); System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shell);
         } catch { Log("安装已完成。桌面快捷方式未能创建，请在安装目录双击 JARVIS.exe。"); }
     }

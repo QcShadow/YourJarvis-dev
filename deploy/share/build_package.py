@@ -49,7 +49,7 @@ def tree_files(root: Path):
             yield file
 
 
-def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
+def package_entries(root: Path, *, lite=False, speech=False, desktop=False, desktop_directory=None):
     project = root / "src"
     share = project / "deploy/share"
     entries: dict[str, Path] = {}
@@ -75,11 +75,15 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
         "install-jarvis.ps1",
         "install-jarvis.cmd",
         "install-worker.ps1",
+        "install-speech.ps1",
     ):
         add(share / name, name)
     add(share / "configure_portable.py", "scripts/configure_portable.py")
     add(share / "smoke_installed.py", "scripts/smoke_installed.py")
     add(share / "verify_voice.py", "scripts/verify_voice.py")
+    add(share / "configure_speech.py", "scripts/configure_speech.py")
+    for name in ("qwen_tts_server.py", "qwen_voice_audio.py"):
+        add(share / "voice" / name, "scripts/" + name)
     add(share / "README.zh-CN.md", "使用说明.md")
     if desktop:
         # Generated UI assets are ignored by Git; a clean snapshot must build them.
@@ -87,7 +91,7 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             raise FileNotFoundError(
                 "Build the frontend before packaging the desktop release."
             )
-        binaries = root / "dist/share-desktop"
+        binaries = Path(desktop_directory) if desktop_directory else root / "dist/share-desktop"
         if not binaries.is_dir():
             binaries = root
         for name in (
@@ -103,6 +107,8 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
             "JARVIS-Install.exe.config",
             "JARVIS-Resources.exe",
             "JARVIS-Spawn.exe",
+            "JARVIS-Speech.exe",
+            "JARVIS-Uninstall.exe",
         ):
             add(binaries / name, name)
         add(binaries / "resources.json", "resources.json")
@@ -133,8 +139,8 @@ def package_entries(root: Path, *, lite=False, speech=False, desktop=False):
     return entries
 
 
-def build_package(root: Path, output: Path, **options):
-    entries = package_entries(root, **options)
+def build_package(root: Path, output: Path, desktop_directory=None, **options):
+    entries = package_entries(root, desktop_directory=desktop_directory, **options)
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest = {
         "format": 1,
@@ -165,6 +171,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--desktop-directory", type=Path)
     parser.add_argument(
         "--lite", action="store_true", help="Include only Qwen2.5 0.5B weights."
     )
@@ -178,6 +185,7 @@ def main():
     manifest = build_package(
         args.root.resolve(),
         args.output.resolve(),
+        desktop_directory=args.desktop_directory,
         lite=args.lite,
         speech=args.speech,
         desktop=args.desktop,

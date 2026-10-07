@@ -21,6 +21,10 @@ internal static class ResourceFetch
         foreach(string segment in relative.Split('/','\\')) if(segment==".." || segment==".") throw new Exception("资源路径无效。");
         string path=Path.GetFullPath(Path.Combine(root,relative));
         if (!path.StartsWith(Path.GetFullPath(root).TrimEnd('\\')+"\\",StringComparison.OrdinalIgnoreCase)) throw new Exception("资源路径无效。");
+        for(string current=path;current!=null;current=Path.GetDirectoryName(current)) {
+            if((File.Exists(current)||Directory.Exists(current)) && (File.GetAttributes(current)&FileAttributes.ReparsePoint)!=0) throw new Exception("资源目录包含链接，请使用独立安装目录。");
+            if(current.Equals(Path.GetFullPath(root).TrimEnd('\\'),StringComparison.OrdinalIgnoreCase))break;
+        }
         return path;
     }
     private static bool Valid(string file, Dictionary<string,object> item) {
@@ -34,9 +38,12 @@ internal static class ResourceFetch
             if(Hash(partial)==(string)item["sha256"]) { File.Copy(partial,target,true); File.Delete(partial); return; }
             File.Delete(partial);
         }
-        foreach(string baseUrl in bases) for(int attempt=0;attempt<2;attempt++) {
+        var urls=new List<string>();
+        if(item.ContainsKey("urls")) foreach(var value in (IEnumerable)item["urls"]) urls.Add((string)value);
+        else foreach(string baseUrl in bases) urls.Add(baseUrl.TrimEnd('/')+"/"+Uri.EscapeDataString(name));
+        foreach(string url in urls) for(int attempt=0;attempt<2;attempt++) {
             try {
-                var uri=new Uri(baseUrl.TrimEnd('/')+"/"+Uri.EscapeDataString(name));
+                var uri=new Uri(url);
                 if(uri.Scheme!="https" && !uri.IsLoopback) throw new Exception("资源下载只支持 HTTPS。");
                 Console.WriteLine("下载来源："+uri.Host+" · "+name+"（支持断点续传）");
                 using(var client=new HttpClient { Timeout=TimeSpan.FromSeconds(40) })
@@ -104,6 +111,22 @@ internal static class ResourceFetch
         var bases=new List<string>(); foreach(var value in (IEnumerable)(pack.ContainsKey("baseUrls")?pack["baseUrls"]:manifest["baseUrls"])) bases.Add((string)value);
         if(channel=="github") bases.Reverse();
         string folder=Path.Combine(root,"cache","downloads"); Directory.CreateDirectory(folder);
+        if(pack.ContainsKey("files")) {
+            foreach(var value in (IEnumerable)pack["files"]) {
+                var file=(Dictionary<string,object>)value;
+                string relative=Convert.ToString(file["path"]).Replace('\\','/');
+                if(!relative.StartsWith("models/",StringComparison.Ordinal)) throw new Exception("模型下载路径无效。");
+                string destination=Under(root,relative);
+                if(Valid(destination,file)) continue;
+                await Fetch(folder,file,bases);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                string staging=destination+".installing";
+                File.Copy(Under(folder,(string)file["name"]),staging,true);
+                if(File.Exists(destination)) File.Delete(destination);
+                File.Move(staging,destination);
+            }
+            Console.WriteLine("模型资源准备完成："+packName); return;
+        }
         var parts=new List<Dictionary<string,object>>(); foreach(var part in (IEnumerable)pack["parts"]) parts.Add((Dictionary<string,object>)part);
         foreach(var part in parts) await Fetch(folder,part,bases);
         string archive=Path.Combine(folder,packName+".zip");

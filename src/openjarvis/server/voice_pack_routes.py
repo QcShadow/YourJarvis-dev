@@ -14,6 +14,13 @@ from openjarvis.speech import voice_packs
 router = APIRouter(prefix="/v1/speech/packs", tags=["voice-packs"])
 
 
+@router.get("/resources")
+async def speech_resources(request: Request):
+    require_local(request)
+    from openjarvis.speech.resources import catalog
+    return await asyncio.to_thread(catalog)
+
+
 def require_local(request):
     _require_local(request)
     origin = request.headers.get("origin")
@@ -35,6 +42,8 @@ async def import_pack(
     transcript: str = Form(""),
     reference_language: str = Form("zh"),
     speaker_id: int = Form(0),
+    embedding_only: bool = Form(False),
+    generate: bool = Form(False),
 ):
     require_local(request)
     if len(files) > 3:
@@ -42,6 +51,12 @@ async def import_pack(
     data = []
     total = 0
     try:
+        if generate:
+            from openjarvis.speech.resources import installed
+            if not installed()["clone"]:
+                raise HTTPException(409, "请先在语音资源中下载录音创建音色引擎")
+            if not any((f.filename or "").lower().endswith(".wav") for f in files):
+                raise HTTPException(422, "创建音色需要上传纯净 WAV 录音")
         for upload in files:
             chunks = []
             file_total = 0
@@ -69,7 +84,25 @@ async def import_pack(
             transcript=transcript,
             reference_language=reference_language,
             speaker_id=speaker_id,
+            embedding_only=embedding_only,
         )
+        if generate:
+            from openjarvis.speech.profiles import profile_backend, resolve_profile, synthesize_profile
+            selected = resolve_profile(result["id"], reference_language)
+            try:
+                backend = await profile_backend(request.app, selected)
+                sample = "你好，这是我的新音色。" if reference_language == "zh" else "Hello, this is my new voice."
+                audio = await asyncio.to_thread(synthesize_profile, backend, selected, sample)
+                (voice_packs.pack_path(result["id"]) / "preview.wav").write_bytes(audio.audio)
+            except Exception as exc:
+                await asyncio.to_thread(voice_packs.delete, result["id"])
+                tasks = getattr(request.app.state, "voice_profile_loads", {})
+                for key in list(tasks):
+                    if isinstance(key, tuple) and key[1] == result["id"]:
+                        task = tasks.pop(key)
+                        if task.done() and not task.cancelled() and task.exception() is None:
+                            await asyncio.to_thread(task.result().close)
+                raise HTTPException(503, "音色生成未完成，请检查语音服务日志后重试") from exc
         return voice_packs.public_profile(result)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -80,6 +113,20 @@ async def import_pack(
 
 class RenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+
+
+@router.get("/{pack_id}/preview")
+async def created_preview(pack_id: str, request: Request):
+    require_local(request)
+    try:
+        voice_packs.read_manifest(pack_id)
+        path = voice_packs.pack_path(pack_id) / "preview.wav"
+        if path.is_symlink():
+            raise ValueError("Invalid preview")
+        data = await asyncio.to_thread(path.read_bytes)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, "此音色没有生成样音，请点击试听") from exc
+    return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @router.patch("/{pack_id}")

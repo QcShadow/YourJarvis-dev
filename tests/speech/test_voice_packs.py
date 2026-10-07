@@ -76,6 +76,15 @@ def test_missing_transcript_and_silence_leave_no_installed_pack():
     assert voice_packs.catalog() == []
 
 
+def test_audio_only_mode_survives_sharing_without_transcript():
+    value = voice_packs.install([("clean.wav", recording())], name="纯音频音色", embedding_only=True)
+    assert value["_embedding_only"]
+    shared = voice_packs.install([("shared.jvoice", voice_packs.export(value["id"]))])
+    assert shared["_embedding_only"]
+    assert (voice_packs.pack_path(shared["id"]) / "reference.txt").read_text() == ""
+    voice_packs.verify_assets(shared["id"])
+
+
 @pytest.mark.parametrize(
     "filename", ["../escape.wav", "/absolute.wav", "C:/escape.wav", "..\\escape.wav"]
 )
