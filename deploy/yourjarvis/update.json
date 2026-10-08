@@ -2,6 +2,6 @@
   "version": "0.2.0",
   "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.2.0",
   "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.2.0/JARVIS-Setup-0.2.0.exe",
-  "sha256": "6e27cf83986136aed1a09610e7d6c321502f9645216f5e5258f237f95ed50581",
+  "sha256": "77d8f29b3329e267d654b3c77ddfff55bf8f397e1aef72983fa1d8f361b769eb",
   "notes": "聊天与语音统一所选模型；本地预加载与路由使用本安装目录服务；详细回复首句提前播报、唤醒预热、句尾识别与回合耗时显示。无需新资源包。"
 }

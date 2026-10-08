@@ -32,5 +32,6 @@ try {
     }
     $env:OLLAMA_HOST = $state.url
     $env:JARVIS_LOCAL_OLLAMA = $state.url
+    $env:JARVIS_LOCAL_OLLAMA_URL = $state.url
     Write-Host "本安装目录的模型服务已就绪：$($state.url)"
 } finally { if ($lock) { $lock.Dispose() } }
