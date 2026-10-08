@@ -78,6 +78,19 @@ class VoicePool:
             self.voice = Voice(self.device, self.engine)
         return self.voice
 
+    def warmup(self):
+        """Load and prime the voice model without producing audible output."""
+        while True:
+            self._wait_available()
+            with self.lock:
+                if self.suspended.is_set() or self._image_lease_active():
+                    continue
+                try:
+                    self._get_voice()
+                    return True
+                finally:
+                    self.last_used = time.monotonic()
+
     def _wait_available(self):
         while True:
             active = self._image_lease_active()
@@ -170,7 +183,11 @@ class SynthesisRequest(BaseModel):
 
     def options(self):
         reference = (
-            (base64.b64decode(self.reference_audio), self.reference_text.strip(), self.embedding_only)
+            (
+                base64.b64decode(self.reference_audio),
+                self.reference_text.strip(),
+                self.embedding_only,
+            )
             if self.reference_audio
             else None
         )
@@ -273,7 +290,9 @@ class Voice:
                 raise ValueError("Built-in JARVIS reference assets are missing")
             return self.prompt
         data, text, embedding_only = reference
-        key = hashlib.sha256(data + text.encode("utf-8") + bytes([embedding_only])).hexdigest()
+        key = hashlib.sha256(
+            data + text.encode("utf-8") + bytes([embedding_only])
+        ).hexdigest()
         if key not in self.prompts:
             import numpy as np
 
@@ -286,7 +305,9 @@ class Voice:
                     samples.reshape(-1, audio.getnchannels()).mean(axis=1) / 32768.0
                 )
             self.prompts[key] = self.base.create_voice_clone_prompt(
-                ref_audio=(samples, rate), ref_text=text or None, x_vector_only_mode=embedding_only
+                ref_audio=(samples, rate),
+                ref_text=text or None,
+                x_vector_only_mode=embedding_only,
             )
             if len(self.prompts) > 4:
                 self.prompts.popitem(last=False)
@@ -403,6 +424,11 @@ def create_app(voice, identity=IDENTITY):
     @app.post("/resume")
     def resume():
         voice.resume()
+        return {"loaded": voice.voice is not None, "suspended": False}
+
+    @app.post("/warmup")
+    def warmup():
+        voice.warmup()
         return {"loaded": voice.voice is not None, "suspended": False}
 
     @app.post("/synthesize")

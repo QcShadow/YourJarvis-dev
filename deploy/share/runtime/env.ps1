@@ -9,6 +9,10 @@ $env:PYTHONHOME = $null
 $env:PYTHONPATH = $null
 $env:OLLAMA_MODELS = Join-Path $script:JarvisRoot 'models\ollama'
 $env:OLLAMA_HOST = 'http://127.0.0.1:11434'
+$env:JARVIS_LOCAL_OLLAMA = $null
+$env:JARVIS_LOCAL_OLLAMA_URL = $null
+$env:JARVIS_VOICE_URL = $null
+$env:JARVIS_VOICE_INSTANCE = $null
 $localNoProxy = 'localhost,127.0.0.1,::1'
 $existingNoProxy = if ($env:NO_PROXY) { $env:NO_PROXY } elseif ($env:no_proxy) { $env:no_proxy } else { '' }
 $env:NO_PROXY = if ($existingNoProxy) { "$localNoProxy,$existingNoProxy" } else { $localNoProxy }
@@ -54,6 +58,29 @@ if (-not (Test-Path -LiteralPath $script:JarvisOllama)) {
     if ($installedOllama) { $script:JarvisOllama = $installedOllama.Source }
     elseif (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe')) {
         $script:JarvisOllama = Join-Path $env:LOCALAPPDATA 'Programs\Ollama\ollama.exe'
+    }
+}
+
+$runtimeStateHelpers = Join-Path $script:JarvisRoot 'runtime-state.ps1'
+if (Test-Path -LiteralPath $runtimeStateHelpers) {
+    . $runtimeStateHelpers
+    $ollamaState = Read-JarvisState 'ollama-runtime'
+    $ownedOllama = Get-OwnedJarvisProcess $ollamaState $script:JarvisOllama
+    if ($ownedOllama -and (Test-JarvisEndpoint ($ollamaState.url + '/api/tags'))) {
+        $env:OLLAMA_HOST = $ollamaState.url
+        $env:JARVIS_LOCAL_OLLAMA = $ollamaState.url
+        $env:JARVIS_LOCAL_OLLAMA_URL = $ollamaState.url
+    }
+    $guiState = Read-JarvisState 'gui-runtime'
+    $guiPython = Join-Path $script:JarvisSource '.venv\Scripts\python.exe'
+    $ownedGui = Get-OwnedJarvisProcess $guiState $guiPython
+    if ($ownedGui -and $guiState.instance -and (
+        Test-JarvisEndpoint ($guiState.url + '/health') $guiState.instance
+    )) {
+        if ($guiState.voice_url) {
+            $env:JARVIS_VOICE_URL = $guiState.voice_url
+            $env:JARVIS_VOICE_INSTANCE = $guiState.instance
+        }
     }
 }
 

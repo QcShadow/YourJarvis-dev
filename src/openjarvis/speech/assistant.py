@@ -194,20 +194,28 @@ class UtteranceSegmenter:
         # A speaker who pauses inside phrases gets more thinking room, while
         # short commands remain responsive. Bound the adjustment, not cadence.
         cadence_pause = max(self.pause_ms, self.learned_pause_ms)
-        extra = max(0.0, cadence_pause * 1.5 - 600)
+        cadence_extra = max(0.0, cadence_pause * 1.5 - 600)
         # A first long hesitation cannot teach us the speaker's cadence before
-        # it happens. Give longer utterances a small progressive allowance as
-        # well, while keeping short commands on the configured baseline.
+        # it happens. Give longer utterances a smooth progressive allowance as
+        # well, while keeping short commands on the configured baseline. Use
+        # the larger signal rather than summing both, so a slow speaker is not
+        # penalized twice.
         spoken_span_ms = max(0, len(self.frames) - self.quiet) * self.frame_ms
-        if spoken_span_ms >= 4000:
-            extra += 200
-        if spoken_span_ms >= 8000:
-            extra += 200
-        return self.silence_ms + min(800, extra) if self.adaptive else self.silence_ms
+        duration_extra = max(0.0, (spoken_span_ms - 2000) * 0.1)
+        extra = min(1000.0, max(cadence_extra, duration_extra))
+        return self.silence_ms + extra if self.adaptive else self.silence_ms
 
     def feed(self, frame: bytes) -> bytes | None:
         level = _rms(frame)
-        loud = level > max(250.0, self.noise * 3.0)
+        # Starting an utterance needs a firm signal; once speech is active,
+        # use a lower release threshold so quiet sentence endings are not
+        # mistaken for silence. The minimums still reject ordinary room noise.
+        threshold = (
+            max(140.0, self.noise * 2.0)
+            if self.frames
+            else max(250.0, self.noise * 3.0)
+        )
+        loud = level > threshold
         if not loud:
             self.noise = self.noise * 0.98 + min(level, 250.0) * 0.02
         if not self.frames:
@@ -232,8 +240,9 @@ class UtteranceSegmenter:
             self.quiet = 0
         else:
             self.quiet += 1
+        endpoint_target_ms = self.end_pause_ms()
         if (
-            self.quiet * self.frame_ms < self.end_pause_ms()
+            self.quiet * self.frame_ms < endpoint_target_ms
             and len(self.frames) * self.frame_ms < 40000
         ):
             return None
@@ -246,6 +255,7 @@ class UtteranceSegmenter:
                 "utterance_ms": float(len(frames) * self.frame_ms),
                 "voiced_ms": float(self.voiced * self.frame_ms),
                 "endpoint_pause_ms": float(self.quiet * self.frame_ms),
+                "endpoint_target_ms": round(endpoint_target_ms, 1),
                 "learned_pause_ms": round(self.learned_pause_ms, 1),
                 "noise_level": round(min(1.0, self.noise / 8000), 3),
             }
@@ -290,6 +300,7 @@ class NativeVoiceRuntime:
         respond: Callable[..., AsyncIterator[dict[str, Any]]],
         synthesize: Callable[..., Any],
         synthesize_stream: Callable[..., Any] | None = None,
+        warm_speech: Callable[[], Any] | None = None,
         delegate: Callable[[list[dict[str, Any]], VoiceOptions], Awaitable[dict]]
         | None = None,
     ) -> None:
@@ -297,6 +308,7 @@ class NativeVoiceRuntime:
         self.respond = respond
         self.synthesize = synthesize
         self.synthesize_stream = synthesize_stream
+        self.warm_speech = warm_speech
         self.delegate = delegate
         self.options = VoiceOptions()
         self.session_id = "voice-" + uuid.uuid4().hex[:12]
@@ -313,6 +325,7 @@ class NativeVoiceRuntime:
             "utterance_ms": 0.0,
             "voiced_ms": 0.0,
             "endpoint_pause_ms": 0.0,
+            "endpoint_target_ms": 0.0,
             "learned_pause_ms": 0.0,
             "noise_level": 0.0,
             "queue_delay_ms": 0.0,
@@ -321,6 +334,13 @@ class NativeVoiceRuntime:
             "queue_drops": 0.0,
             "echo_rejections": 0.0,
             "busy_ignored": 0.0,
+            "model_route_ms": 0.0,
+            "first_token_ms": 0.0,
+            "model_complete_ms": 0.0,
+            "ack_audio_ms": 0.0,
+            "reply_audio_ms": 0.0,
+            "turn_total_ms": 0.0,
+            "speech_warmup_ms": 0.0,
         }
         self.armed_until = 0.0
         self._stop = threading.Event()
@@ -342,6 +362,9 @@ class NativeVoiceRuntime:
         self._spoken_text = ""
         self.foreground = True
         self.speech_detail = "brief"
+        self._active_turn_started_at: float | None = None
+        self.active_model = self.options.fast_model
+        self.active_mode = "chat"
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -350,7 +373,8 @@ class NativeVoiceRuntime:
             "error": self.error,
             "revision": self.revision,
             "session_id": self.session_id,
-            "model": self.options.fast_model,
+            "model": self.active_model,
+            "mode": self.active_mode,
             "last_transcript": self.last_transcript,
             "input_level": self.input_level,
             "audio_metrics": dict(self.audio_metrics),
@@ -368,6 +392,35 @@ class NativeVoiceRuntime:
         self.phase, self.error = phase, error
         self.revision += 1
 
+    def _begin_turn_metrics(self, started_at: float) -> None:
+        self._active_turn_started_at = started_at
+        self.active_model = self.options.fast_model
+        self.active_mode = "chat"
+        for name in (
+            "model_route_ms",
+            "first_token_ms",
+            "model_complete_ms",
+            "ack_audio_ms",
+            "reply_audio_ms",
+            "turn_total_ms",
+            "speech_warmup_ms",
+        ):
+            self.audio_metrics[name] = 0.0
+
+    def _mark_elapsed(self, name: str) -> None:
+        if self._active_turn_started_at is None or self.audio_metrics.get(name):
+            return
+        self.audio_metrics[name] = max(
+            0.1,
+            round((time.monotonic() - self._active_turn_started_at) * 1000, 1),
+        )
+
+    def _mark_speaking(self, text: str) -> None:
+        self._mark_elapsed(
+            "ack_audio_ms" if text in {"我在。", "I'm here."} else "reply_audio_ms"
+        )
+        self._status("speaking")
+
     async def start(self, options: VoiceOptions) -> None:
         if self.running:
             if (
@@ -378,11 +431,15 @@ class NativeVoiceRuntime:
                 and self.options.voice_id == options.voice_id
                 and self.options.character_id == options.character_id
             ):
+                previous_fast_model = self.options.fast_model
                 self.options = options
+                if self.active_model == previous_fast_model:
+                    self.active_model = options.fast_model
                 return
         # An errored capture thread may have left a consumer waiting.
         await self.stop()
         self.options = options
+        self.active_model = options.fast_model
         self.foreground = True
         self.speech_detail = options.speech_detail
         self.session_id = "voice-" + uuid.uuid4().hex[:12]
@@ -435,6 +492,7 @@ class NativeVoiceRuntime:
                         segmenter.silence_ms = (
                             700 if controls_only else options.silence_ms
                         )
+                        segmenter.adaptive = not controls_only
                         audio = segmenter.feed(bytes(raw))
                         if audio:
                             captured_at = time.monotonic()
@@ -473,6 +531,23 @@ class NativeVoiceRuntime:
             self._warm_task.add_done_callback(
                 lambda task: task.exception() if not task.cancelled() else None
             )
+
+    def _start_speech_warmup(self) -> None:
+        """Warm an idle speech model concurrently with wake acknowledgement."""
+        if not self.options.speak or self.warm_speech is None:
+            return
+        if self._warm_task is not None and not self._warm_task.done():
+            return
+        async def warm() -> None:
+            try:
+                await asyncio.to_thread(self.warm_speech)
+            finally:
+                self._mark_elapsed("speech_warmup_ms")
+
+        self._warm_task = asyncio.create_task(warm(), name="jarvis-speech-warmup")
+        self._warm_task.add_done_callback(
+            lambda task: task.exception() if not task.cancelled() else None
+        )
 
     def _capture_error(self, message: str) -> None:
         self.running = False
@@ -696,11 +771,13 @@ class NativeVoiceRuntime:
         self._turn_task = asyncio.create_task(run_turn(), name="jarvis-voice-turn")
 
     async def handle_transcript(self, text: str) -> None:
+        turn_started = time.monotonic()
         options = self.options
         text = normalize_transcript(text, self.options.language)
         self.last_transcript = text
         woke, command = extract_wake_command(text)
         if woke:
+            self._begin_turn_metrics(turn_started)
             self.foreground = True
             self.speech_detail = options.speech_detail
             self.wake_count += 1
@@ -725,11 +802,13 @@ class NativeVoiceRuntime:
                         "timestamp": now,
                     },
                 ]
+            self._start_speech_warmup()
             await self._say(
                 "我在。" if options.response_language == "zh" else "I'm here.", options
             )
             self.armed_until = time.monotonic() + self.options.followup_seconds
         elif time.monotonic() < self.armed_until:
+            self._begin_turn_metrics(turn_started)
             command = text
         else:
             self._status("listening")
@@ -743,11 +822,13 @@ class NativeVoiceRuntime:
             self.armed_until = 0
             self.foreground = False
             self._status("listening")
+            self._mark_elapsed("turn_total_ms")
             return
         if not command:
             self._status("armed")
             self.armed_until = time.monotonic() + self.options.followup_seconds
             self._status("armed")
+            self._mark_elapsed("turn_total_ms")
             return
         detail = speech_detail_switch(command)
         if detail:
@@ -816,6 +897,7 @@ class NativeVoiceRuntime:
                 self.revision += 1
             self.armed_until = time.monotonic() + self.options.followup_seconds
             self._status("armed")
+            self._mark_elapsed("turn_total_ms")
             return
         self._status("thinking")
         early_speech = None
@@ -826,6 +908,7 @@ class NativeVoiceRuntime:
                 if self._stop.is_set():
                     return
                 if event.get("text"):
+                    self._mark_elapsed("first_token_ms")
                     assistant["content"] += event["text"]
                     self._status(self.phase if early_speech else "responding")
                     # Start TTS on the first complete sentence while the LLM
@@ -833,7 +916,6 @@ class NativeVoiceRuntime:
                     if (
                         options.speak
                         and not tool_mode
-                        and self.speech_detail == "brief"
                         and self.synthesize_stream is not None
                         and early_speech is None
                     ):
@@ -851,6 +933,8 @@ class NativeVoiceRuntime:
                                 )
                 if "mode" in event:
                     tool_mode = event["mode"] == "tool"
+                    self.active_mode = str(event["mode"])
+                    self.revision += 1
                 if "final_text" in event:
                     assistant["content"] = event["final_text"]
                     self.revision += 1
@@ -888,9 +972,13 @@ class NativeVoiceRuntime:
                             )
                         self.revision += 1
                 if event.get("model"):
-                    assistant["telemetry"] = {"model_id": event["model"]}
+                    self._mark_elapsed("model_route_ms")
+                    self.active_model = str(event["model"])
+                    assistant["telemetry"] = {"model_id": self.active_model}
+                    self.revision += 1
                 if event.get("usage"):
                     assistant["usage"] = event["usage"]
+            self._mark_elapsed("model_complete_ms")
             final_spoken = spoken_reply(
                 assistant["content"], options.response_language, self.speech_detail
             )
@@ -918,6 +1006,7 @@ class NativeVoiceRuntime:
             self._status("error", str(exc))
             return
         finally:
+            self._mark_elapsed("turn_total_ms")
             if early_speech is not None:
                 if not early_speech.done():
                     early_speech.cancel()
@@ -950,7 +1039,7 @@ class NativeVoiceRuntime:
             audio = await asyncio.to_thread(self._synthesize_audio, text, options)
         if self._stop.is_set() or self._interrupt.is_set():
             return
-        self._status("speaking")
+        self._mark_speaking(text)
         self._play_task = asyncio.create_task(asyncio.to_thread(self._play, audio))
         await asyncio.shield(self._play_task)
         self._play_task = None
@@ -1092,7 +1181,7 @@ class NativeVoiceRuntime:
                         samplerate=rate, channels=1, dtype="int16"
                     )
                     output.start()
-                    loop.call_soon_threadsafe(self._status, "speaking")
+                    loop.call_soon_threadsafe(self._mark_speaking, text)
                 if len(pcm) % 2:
                     raise ValueError("Streaming audio has an incomplete sample")
                 output.write(pcm)

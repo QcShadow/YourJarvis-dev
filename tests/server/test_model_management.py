@@ -10,6 +10,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+from openjarvis.engine.multi import MultiEngine  # noqa: E402
 from openjarvis.server.app import create_app  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -103,6 +104,79 @@ class TestModelPull:
             resp = client.post("/v1/models/pull", json={"model": "foo"})
 
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Model preload endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestModelPreload:
+    def test_preload_uses_the_backends_owned_ollama_host(self):
+        engine = _make_ollama_engine()
+        engine._host = "http://127.0.0.1:43123"
+        multi = MultiEngine(
+            [("ollama", engine), ("vllm", _make_engine(engine_id="vllm"))]
+        )
+        client = TestClient(_app(multi, engine_name="multi"))
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("httpx.AsyncClient") as MockClient:
+            instance = MockClient.return_value.__aenter__.return_value
+            instance.post = AsyncMock(return_value=mock_resp)
+            resp = client.post(
+                "/v1/models/preload", json={"model": "qwen3.5:9b"}
+            )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ready", "model": "qwen3.5:9b"}
+        MockClient.assert_called_once_with(
+            base_url="http://127.0.0.1:43123", timeout=120.0
+        )
+        instance.post.assert_awaited_once_with(
+            "/api/generate",
+            json={
+                "model": "qwen3.5:9b",
+                "prompt": "",
+                "stream": False,
+                "keep_alive": "5m",
+            },
+        )
+
+    def test_preload_rejects_non_ollama_engine(self):
+        client = TestClient(_app(_make_engine(engine_id="vllm"), engine_name="vllm"))
+        resp = client.post("/v1/models/preload", json={"model": "anything"})
+        assert resp.status_code == 501
+
+
+class TestModelRoutingIsolation:
+    def test_route_uses_the_backends_owned_ollama_host(self):
+        engine = _make_ollama_engine(models=["fast", "strong"])
+        engine._host = "http://127.0.0.1:43123"
+        client = TestClient(_app(engine, engine_name="ollama"))
+        tags = MagicMock()
+        tags.raise_for_status = MagicMock()
+        tags.json.return_value = {
+            "models": [{"name": "fast"}, {"name": "strong"}]
+        }
+
+        with patch("httpx.AsyncClient") as MockClient:
+            instance = MockClient.return_value.__aenter__.return_value
+            instance.get = AsyncMock(return_value=tags)
+            response = client.post(
+                "/v1/models/route",
+                json={
+                    "prompt": "你好",
+                    "fast_model": "fast",
+                    "strong_model": "strong",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json()["model"] == "fast"
+        instance.get.assert_awaited_once_with("http://127.0.0.1:43123/api/tags")
 
 
 # ---------------------------------------------------------------------------

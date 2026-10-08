@@ -275,7 +275,7 @@ export function InputArea() {
       let chatMode: 'chat' | 'tool' | 'deep' = 'tool';
       if (!deepResearch) {
         const installed = useAppStore.getState().models.map((model) => model.id);
-        const fast = installed.find((id) => id.startsWith('qwen3.5:9b')) ?? selectedModel;
+        const fast = selectedModel;
         const strong = installed.find((id) => id.startsWith('deepseek-r1:14b')) ?? fast;
         if (automaticModelRouting && !selectedModel.startsWith('third-party/')) {
           setStreamState({ phase: 'Choosing model...' });

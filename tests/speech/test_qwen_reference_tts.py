@@ -18,7 +18,7 @@ from tests.speech.test_voice_packs import recording, reference
 
 @pytest.fixture
 def worker(monkeypatch):
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3] / "scripts"))
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "deploy/share/voice"))
     return importlib.import_module("qwen_tts_server")
 
 
@@ -29,9 +29,11 @@ def test_worker_reference_identity_and_explicit_english(worker):
         voice=None,
         lock=threading.Lock(),
         suspended=threading.Event(),
+        warmup=Mock(),
         synthesize=Mock(return_value=recording()),
         stream=Mock(return_value=iter([b"\0\0" * 8])),
     )
+    pool.warmup.side_effect = lambda: setattr(pool, "voice", object())
     client = TestClient(worker.create_app(pool, "jarvis-high-qwen-local-v1:test"))
     voice_id = "user-" + "a" * 32
     body = {
@@ -49,6 +51,8 @@ def test_worker_reference_identity_and_explicit_english(worker):
     health = client.get("/health").json()
     assert health["reference_api"] == 1
     assert health["identity"] == "jarvis-high-qwen-local-v1:test"
+    assert client.post("/warmup").json() == {"loaded": True, "suspended": False}
+    pool.warmup.assert_called_once_with()
     body["voice_id"] = "jarvis-high"
     assert client.post("/synthesize", json=body).status_code == 422
     body["voice_id"] = voice_id
@@ -63,11 +67,12 @@ def test_prompt_cache_key_includes_audio_and_transcript_and_is_bounded(worker):
     voice.base = Mock()
     voice.base.create_voice_clone_prompt.side_effect = lambda **kwargs: object()
     audio = recording()
-    first = voice._reference_prompt((audio, "one"))
-    assert voice._reference_prompt((audio, "one")) is first
-    assert voice._reference_prompt((audio, "two")) is not first
+    first = voice._reference_prompt((audio, "one", False))
+    assert voice._reference_prompt((audio, "one", False)) is first
+    assert voice._reference_prompt((audio, "two", False)) is not first
+    assert voice._reference_prompt((audio, "one", True)) is not first
     for number in range(5):
-        voice._reference_prompt((recording(number + 2), str(number)))
+        voice._reference_prompt((recording(number + 2), str(number), False))
     assert len(voice.prompts) == 4
     assert voice._reference_prompt(None) is voice.prompt
     assert "Jarvis" in "".join(worker.Voice.chunks("Jarvis is here.", "English"))

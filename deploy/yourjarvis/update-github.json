@@ -1,7 +1,7 @@
 {
-  "version": "0.1.5",
-  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.1.5",
-  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.1.5/JARVIS-Setup-0.1.5.exe",
-  "sha256": "417f3c445d598d57c37bdefcba2e9ce17854cbdeaf8f6c99749e1ca0a30e48b4",
-  "notes": "一键下载、重启并应用更新；重做安装/更新引导界面；朋友版开放长期记忆、时间、文件、目录、浏览器和联网搜索能力。"
+  "version": "0.2.0",
+  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.2.0",
+  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.2.0/JARVIS-Setup-0.2.0.exe",
+  "sha256": "6e27cf83986136aed1a09610e7d6c321502f9645216f5e5258f237f95ed50581",
+  "notes": "聊天与语音统一所选模型；本地预加载与路由使用本安装目录服务；详细回复首句提前播报、唤醒预热、句尾识别与回合耗时显示。无需新资源包。"
 }

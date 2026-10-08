@@ -80,6 +80,22 @@ def test_managed_desktop_requires_its_own_voice_worker(monkeypatch):
         backend._ready()
 
 
+def test_warmup_primes_worker_without_synthesizing_audio():
+    backend = JarvisTTSBackend()
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = b'{"loaded": true}'
+    with (
+        patch.object(backend, "_ensure_worker") as ensure,
+        patch("urllib.request.urlopen", return_value=response) as send,
+    ):
+        assert backend.warmup() is True
+    ensure.assert_called_once_with()
+    request = send.call_args.args[0]
+    assert request.full_url.endswith("/warmup")
+    assert request.method == "POST"
+    assert request.data == b"{}"
+
+
 @pytest.mark.parametrize("speed", [0, float("nan"), float("inf"), 3])
 def test_invalid_speed(speed):
     with pytest.raises(ValueError, match="speed"):

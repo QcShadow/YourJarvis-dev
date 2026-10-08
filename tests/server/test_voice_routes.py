@@ -49,6 +49,40 @@ async def test_native_voice_uses_actual_chat_stream():
 
 
 @pytest.mark.anyio
+async def test_native_voice_routes_with_its_current_backend_instance(monkeypatch):
+    from fastapi.responses import StreamingResponse
+
+    from openjarvis.server import routes
+
+    app = app_with_stream()
+    seen = {}
+
+    async def route(body, request):
+        seen["app"] = request.app
+        return {"mode": "chat", "model": body.fast_model}
+
+    async def chat(req, request):
+        async def stream():
+            yield 'data: {"choices":[{"delta":{"content":"收到"}}]}\n\n'
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(stream())
+
+    monkeypatch.setattr(routes, "route_model", route)
+    monkeypatch.setattr(routes, "chat_completions", chat)
+    options = VoiceOptions(fast_model="test-model", automatic_routing=True)
+    events = [
+        event
+        async for event in _respond(
+            app, [{"role": "user", "content": "你好呀"}], options
+        )
+    ]
+    assert seen["app"] is app
+    assert events[0] == {"model": "test-model"}
+    assert any(event.get("text") == "收到" for event in events)
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("followup", [False, True])
 async def test_native_voice_forwards_mode_tool_records_and_authoritative_final(
     monkeypatch,

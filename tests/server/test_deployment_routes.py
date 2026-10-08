@@ -97,3 +97,27 @@ def test_changed_endpoint_requires_restart(local_settings):
     )
     with TestClient(app, client=("127.0.0.1", 4000)) as client:
         assert client.get("/v1/deployment/settings").json()["restart_required"]
+
+
+def test_owned_dynamic_ollama_port_is_not_reported_as_pending_restart(
+    local_settings, monkeypatch
+):
+    app, path = local_settings
+    runtime_url = "http://127.0.0.1:43123"
+    app.state.config.engine.default = "ollama"
+    app.state.config.engine.ollama.host = runtime_url
+    app.state.config.intelligence.default_model = "qwen3.5:9b"
+    monkeypatch.setenv("JARVIS_LOCAL_OLLAMA_URL", runtime_url)
+    (path / "config.toml").write_text(
+        '[engine]\ndefault = "ollama"\n'
+        '[engine.ollama]\nhost = "http://127.0.0.1:11434"\n'
+        '[intelligence]\ndefault_model = "qwen3.5:9b"\n',
+        encoding="utf-8",
+    )
+
+    with TestClient(app, client=("127.0.0.1", 4000)) as client:
+        result = client.get("/v1/deployment/settings").json()
+
+    assert result["restart_required"] is False
+    assert result["base_url"] == "http://127.0.0.1:11434"
+    assert result["local_base_url"] == runtime_url

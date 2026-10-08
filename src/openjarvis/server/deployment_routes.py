@@ -309,6 +309,19 @@ async def settings(request: Request):
     base_url = saved.get("engine", {}).get(engine, {}).get("host", "") or (
         cfg.engine.api.host if engine == "api" else cfg.engine.ollama.host
     )
+    active_base_url = cfg.engine.api.host if engine == "api" else cfg.engine.ollama.host
+    local_base_url = os.environ.get(
+        "JARVIS_LOCAL_OLLAMA_URL", "http://127.0.0.1:11434"
+    )
+    endpoint_changed = base_url != active_base_url
+    if (
+        engine == "ollama"
+        and cfg.engine.default == "ollama"
+        and active_base_url.rstrip("/") == local_base_url.rstrip("/")
+    ):
+        # The supervised desktop intentionally overrides the conventional
+        # saved port with an owned, dynamic loopback address for this run.
+        endpoint_changed = False
     return {
         "engine": engine,
         "profile": saved.get("deployment", {}).get(
@@ -318,14 +331,11 @@ async def settings(request: Request):
         "base_url": base_url,
         "restart_required": engine != cfg.engine.default
         or model != cfg.intelligence.default_model
-        or base_url
-        != (cfg.engine.api.host if engine == "api" else cfg.engine.ollama.host),
+        or endpoint_changed,
         "has_api_key": bool(get_tool_credential("llm", "JARVIS_LLM_API_KEY")),
         "ram_gb": cfg.hardware.ram_gb,
         "presets": MODEL_PRESETS,
-        "local_base_url": os.environ.get(
-            "JARVIS_LOCAL_OLLAMA_URL", "http://127.0.0.1:11434"
-        ),
+        "local_base_url": local_base_url,
         "portable_client": os.environ.get("JARVIS_PORTABLE_CLIENT") == "1",
     }
 

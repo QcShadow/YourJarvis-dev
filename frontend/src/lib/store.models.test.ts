@@ -33,6 +33,15 @@ afterEach(() => {
 });
 
 describe('setModels', () => {
+  it('separates functional models and synchronizes the chosen voice LLM', async () => {
+    const { useAppStore } = await import('./store');
+    useAppStore.getState().setModels([model('jarvis-writer:4b'), model('qwen3.5:9b')]);
+    expect(useAppStore.getState().selectedModel).toBe('qwen3.5:9b');
+    useAppStore.getState().setSelectedModel('deepseek-r1:14b');
+    expect(useAppStore.getState().settings.defaultModel).toBe('deepseek-r1:14b');
+    useAppStore.getState().setSelectedModel('jarvis-writer:4b');
+    expect(useAppStore.getState().selectedModel).toBe('deepseek-r1:14b');
+  });
   it('does not select an embedding-only model', async () => {
     const { useAppStore } = await import('./store');
 

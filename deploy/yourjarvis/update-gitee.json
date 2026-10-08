@@ -1,7 +1,7 @@
 {
-  "version": "0.1.2",
-  "releaseUrl": "https://gitee.com/QcShadow/your-jarvis-link/releases/tag/v0.1.2",
-  "downloadUrl": "https://gitee.com/QcShadow/your-jarvis-link/releases/download/v0.1.2/JARVIS-Friends-Bootstrap-0.1.2.zip",
-  "sha256": "a12260fe574d212ede5797b1f4f7f05d427315737edc36609ac5f7f0e154038f",
-  "notes": "完整中文图形安装向导：自动按顺序安装、模型连接自检、失败重试；修复 Get-FileHash 和桌面依赖问题。"
+  "version": "0.2.0",
+  "releaseUrl": "https://github.com/QcShadow/YourJarvis-link/releases/tag/v0.2.0",
+  "downloadUrl": "https://github.com/QcShadow/YourJarvis-link/releases/download/v0.2.0/JARVIS-Setup-0.2.0.exe",
+  "sha256": "6e27cf83986136aed1a09610e7d6c321502f9645216f5e5258f237f95ed50581",
+  "notes": "聊天与语音统一所选模型；本地预加载与路由使用本安装目录服务；详细回复首句提前播报、唤醒预热、句尾识别与回合耗时显示。无需新资源包。"
 }

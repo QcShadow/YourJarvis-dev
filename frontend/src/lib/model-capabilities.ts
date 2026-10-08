@@ -20,3 +20,12 @@ export function isEmbedOnlyModel(modelId: string): boolean {
     EMBEDDING_MODEL_PREFIXES.some((prefix) => leaf.startsWith(prefix))
   );
 }
+
+export function isConversationModel(modelId: string): boolean {
+  const name = (modelId || '').trim().toLowerCase();
+  const leaf = name.slice(name.lastIndexOf('/') + 1).split(':')[0];
+  return !!name && !isEmbedOnlyModel(name) && ![
+    'jarvis-writer', 'lcm-', 'dreamshaper', 'stable-diffusion', 'flux-', 'sdxl',
+    'whisper', 'sensevoice', 'kokoro', 'piper', 'qwen3-tts',
+  ].some((prefix) => leaf.startsWith(prefix));
+}

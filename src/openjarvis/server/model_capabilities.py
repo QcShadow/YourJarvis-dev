@@ -31,4 +31,13 @@ def is_embed_only_model(model_name: str) -> bool:
     )
 
 
-__all__ = ["is_embed_only_model"]
+def is_conversation_model(model_name: str) -> bool:
+    name = (model_name or "").strip().lower()
+    leaf = name.rsplit("/", 1)[-1].split(":", 1)[0]
+    return bool(name) and not is_embed_only_model(name) and not leaf.startswith((
+        "jarvis-writer", "lcm-", "dreamshaper", "stable-diffusion", "flux-", "sdxl",
+        "whisper", "sensevoice", "kokoro", "piper", "qwen3-tts",
+    ))
+
+
+__all__ = ["is_embed_only_model", "is_conversation_model"]

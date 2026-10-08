@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Cpu, X, Download, Loader2, Trash2, Check, Cloud, Key, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../lib/store';
+import { isConversationModel } from '../lib/model-capabilities';
 import {
   pullModel,
   deleteModel,
@@ -100,7 +101,8 @@ export function CommandPalette() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const models = useAppStore((s) => s.models);
+  const allModels = useAppStore((s) => s.models);
+  const models = allModels.filter((model) => isConversationModel(model.id));
   const selectedModel = useAppStore((s) => s.selectedModel);
   const setSelectedModel = useAppStore((s) => s.setSelectedModel);
   const setModels = useAppStore((s) => s.setModels);

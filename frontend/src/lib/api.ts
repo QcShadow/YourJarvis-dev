@@ -281,13 +281,14 @@ export async function preloadModel(modelName: string, owner?: string): Promise<v
     || _CLOUD_PREFIXES.some(p => modelName.startsWith(p))) {
     return;
   }
-  // Trigger Ollama to load the model into memory (empty prompt, no generation).
-  const ollamaUrl = 'http://127.0.0.1:11434';
+  // Ask this backend to warm its own Ollama. The desktop uses an isolated,
+  // dynamic loopback port and must never guess that another server on 11434
+  // belongs to this JARVIS installation.
   try {
-    const res = await fetch(`${ollamaUrl}/api/generate`, {
+    const res = await apiFetch('/v1/models/preload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName, prompt: '', keep_alive: '5m' }),
+      body: JSON.stringify({ model: modelName }),
       signal: AbortSignal.timeout(120_000),
     });
     if (!res.ok) throw new Error(`Preload failed: ${res.status}`);

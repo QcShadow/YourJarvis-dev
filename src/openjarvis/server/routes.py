@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from openjarvis.core.paths import get_config_dir
 from openjarvis.core.types import Message, Role, ToolCall
-from openjarvis.server.model_capabilities import is_embed_only_model
+from openjarvis.server.model_capabilities import is_conversation_model, is_embed_only_model
 from openjarvis.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -120,9 +120,15 @@ async def route_model(body: ModelRouteRequest, request: Request = None):
         }
     host = "http://127.0.0.1:11434"
     if request is not None:
-        config = getattr(request.app.state, "config", None)
-        if config is not None:
-            host = config.engine.ollama.host or host
+        owned_ollama = _engine_by_key(
+            getattr(request.app.state, "engine", None), "ollama"
+        )
+        if owned_ollama is not None:
+            host = getattr(owned_ollama, "_host", host)
+        else:
+            config = getattr(request.app.state, "config", None)
+            if config is not None:
+                host = config.engine.ollama.host or host
     try:
         async with httpx.AsyncClient(timeout=25.0, trust_env=False) as client:
             tags_response = await client.get(f"{host}/api/tags")
@@ -135,7 +141,7 @@ async def route_model(body: ModelRouteRequest, request: Request = None):
             fast = body.fast_model
             if fast not in installed:
                 fast = next(
-                    (name for name in installed if not is_embed_only_model(name)),
+                    (name for name in installed if is_conversation_model(name)),
                     body.fast_model,
                 )
             strong = body.strong_model if body.strong_model in installed else fast
@@ -653,6 +659,29 @@ def _engine_key_for_model(engine: Any, model: str) -> str | None:
             continue
         engine_id = getattr(current, "engine_id", None)
         return engine_id if isinstance(engine_id, str) else None
+    return None
+
+
+def _engine_by_key(engine: Any, key: str) -> Any | None:
+    """Find a concrete engine by registry key through known safe wrappers."""
+    from openjarvis.engine.multi import MultiEngine
+    from openjarvis.security.guardrails import GuardrailsEngine
+    from openjarvis.telemetry.instrumented_engine import InstrumentedEngine
+
+    current = engine
+    while current is not None:
+        if isinstance(current, MultiEngine):
+            for engine_key, child in current._engines:
+                if engine_key == key:
+                    return _engine_by_key(child, key)
+            return None
+        if isinstance(current, InstrumentedEngine):
+            current = current._inner
+            continue
+        if isinstance(current, GuardrailsEngine):
+            current = current._engine
+            continue
+        return current if getattr(current, "engine_id", None) == key else None
     return None
 
 
@@ -1422,10 +1451,9 @@ async def pull_model(request: Request):
     if not model_name:
         raise HTTPException(status_code=400, detail="'model' field is required")
 
-    engine = request.app.state.engine
-    engine_name = getattr(request.app.state, "engine_name", "")
-    # Only Ollama supports pulling
-    if engine_name != "ollama" and getattr(engine, "engine_id", "") != "ollama":
+    engine = _engine_by_key(request.app.state.engine, "ollama")
+    # Only Ollama supports pulling.
+    if engine is None:
         raise HTTPException(
             status_code=501,
             detail="Model pulling is only supported with the Ollama engine",
@@ -1452,12 +1480,49 @@ async def pull_model(request: Request):
     return {"status": "ok", "model": model_name}
 
 
+@router.post("/v1/models/preload")
+async def preload_model(request: Request):
+    """Load a local model through the Ollama instance owned by this backend."""
+    body = await request.json()
+    model_name = body.get("model", "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="'model' field is required")
+
+    engine = _engine_by_key(request.app.state.engine, "ollama")
+    if engine is None:
+        raise HTTPException(status_code=501, detail="Only supported with Ollama engine")
+
+    import httpx as _httpx
+
+    host = getattr(engine, "_host", "http://localhost:11434")
+    try:
+        async with _httpx.AsyncClient(base_url=host, timeout=120.0) as client:
+            resp = await client.post(
+                "/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": "",
+                    "stream": False,
+                    "keep_alive": "5m",
+                },
+            )
+        resp.raise_for_status()
+    except (_httpx.ConnectError, _httpx.TimeoutException) as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama unreachable: {exc}")
+    except _httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Ollama error: {exc.response.text[:300]}",
+        )
+
+    return {"status": "ready", "model": model_name}
+
+
 @router.delete("/v1/models/{model_name:path}")
 async def delete_model(model_name: str, request: Request):
     """Delete a model from Ollama."""
-    engine = request.app.state.engine
-    engine_name = getattr(request.app.state, "engine_name", "")
-    if engine_name != "ollama" and getattr(engine, "engine_id", "") != "ollama":
+    engine = _engine_by_key(request.app.state.engine, "ollama")
+    if engine is None:
         raise HTTPException(status_code=501, detail="Only supported with Ollama engine")
 
     import httpx as _httpx

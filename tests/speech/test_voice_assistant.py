@@ -88,7 +88,7 @@ def test_long_request_gets_progressive_endpoint_room_but_short_command_does_not(
     long_request = UtteranceSegmenter(silence_ms=1400)
     for _ in range(410):
         assert long_request.feed(frame(1000)) is None
-    for _ in range(89):
+    for _ in range(100):
         assert long_request.feed(frame()) is None
     assert long_request.feed(frame()) is not None
 
@@ -108,7 +108,7 @@ def test_segmenter_learns_speakers_pause_cadence_across_utterances():
         assert vad.feed(frame()) is None
     for _ in range(15):
         assert vad.feed(frame(1000)) is None
-    for _ in range(109):
+    for _ in range(114):
         assert vad.feed(frame()) is None
     assert vad.feed(frame()) is not None
     assert vad.learned_pause_ms == 1000
@@ -116,20 +116,36 @@ def test_segmenter_learns_speakers_pause_cadence_across_utterances():
         "utterance_ms",
         "voiced_ms",
         "endpoint_pause_ms",
+        "endpoint_target_ms",
         "learned_pause_ms",
         "noise_level",
     }
     assert vad.last_metrics["utterance_ms"] == 1800.0
     assert vad.last_metrics["voiced_ms"] == 600.0
-    assert vad.last_metrics["endpoint_pause_ms"] == 2200.0
+    assert vad.last_metrics["endpoint_pause_ms"] == 2300.0
+    assert vad.last_metrics["endpoint_target_ms"] == 2300.0
     assert vad.last_metrics["learned_pause_ms"] == 1000.0
     assert all(isinstance(value, float) for value in vad.last_metrics.values())
 
     for _ in range(15):
         assert vad.feed(frame(1000)) is None
-    for _ in range(109):
+    for _ in range(114):
         assert vad.feed(frame()) is None
     assert vad.feed(frame()) is not None
+
+
+def test_segmenter_keeps_quiet_sentence_ending_after_clear_onset():
+    vad = UtteranceSegmenter(silence_ms=900)
+    for _ in range(12):
+        assert vad.feed(frame(900)) is None
+    # This level is below the onset threshold but above the active-speech
+    # release threshold. It represents a speaker trailing off naturally.
+    for _ in range(10):
+        assert vad.feed(frame(190)) is None
+    for _ in range(44):
+        assert vad.feed(frame()) is None
+    assert vad.feed(frame()) is not None
+    assert vad.last_metrics["voiced_ms"] == 440.0
 
 
 @pytest.mark.anyio
@@ -537,6 +553,31 @@ async def test_tool_mode_retains_provenance_and_only_speaks_final_result():
 
 
 @pytest.mark.anyio
+async def test_detailed_reply_starts_speaking_after_first_complete_sentence():
+    runtime, _ = make_runtime()
+    spoken = []
+
+    async def say(text, options=None):
+        spoken.append(text)
+
+    async def respond(history, options):
+        yield {"model": "deep-model"}
+        yield {"mode": "deep"}
+        yield {"text": "第一句已经完整。"}
+        await asyncio.sleep(0)
+        assert spoken == ["我在。", "第一句已经完整。"]
+        yield {"text": "第二句继续详细说明。"}
+
+    runtime.respond = respond
+    runtime._say = say
+    runtime.options = VoiceOptions(speak=True, speech_detail="full")
+    runtime.synthesize_stream = MagicMock()
+    await runtime.handle_transcript("嘿贾维斯，请详细介绍")
+    assert spoken == ["我在。", "第一句已经完整。", "第二句继续详细说明。"]
+    assert runtime.messages[-1]["content"] == "第一句已经完整。第二句继续详细说明。"
+
+
+@pytest.mark.anyio
 async def test_standby_phrase_from_speaker_echo_cannot_pause_the_listener():
     runtime, calls = make_runtime()
     runtime.armed_until = time.monotonic() + 30
@@ -664,6 +705,75 @@ async def test_wake_acknowledgement_plays_before_model_and_is_cached():
     await runtime.handle_transcript("嘿贾维斯")
     assert events.count("synth:我在。") == 1
     assert events.count("play:我在。") == 2
+
+
+@pytest.mark.anyio
+async def test_wake_warms_idle_speech_model_without_blocking_acknowledgement():
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+    spoken = []
+
+    def warm():
+        entered.set()
+        release.wait(1)
+
+    runtime, _ = make_runtime()
+    runtime.options = VoiceOptions(speak=True)
+    runtime.warm_speech = warm
+
+    async def say(text, options=None):
+        spoken.append(text)
+
+    runtime._say = say
+    try:
+        await asyncio.wait_for(runtime.handle_transcript("嘿贾维斯"), 0.2)
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert spoken == ["我在。"]
+        assert runtime._warm_task is not None and not runtime._warm_task.done()
+    finally:
+        await asyncio.sleep(0.01)
+        release.set()
+        if runtime._warm_task is not None:
+            await runtime._warm_task
+    assert runtime.audio_metrics["speech_warmup_ms"] > 0
+
+
+@pytest.mark.anyio
+async def test_turn_latency_metrics_separate_routing_first_token_and_completion():
+    runtime, _ = make_runtime()
+
+    async def respond(history, options):
+        await asyncio.sleep(0.01)
+        yield {"model": "fast-controller"}
+        yield {"mode": "deep"}
+        await asyncio.sleep(0.01)
+        yield {"text": "收到。"}
+        await asyncio.sleep(0.01)
+        yield {"usage": {"total_tokens": 4}}
+
+    runtime.respond = respond
+    await runtime.handle_transcript("嘿贾维斯，介绍你自己")
+    metrics = runtime.audio_metrics
+    assert 0 < metrics["model_route_ms"] <= metrics["first_token_ms"]
+    assert runtime.snapshot()["model"] == "fast-controller"
+    assert runtime.snapshot()["mode"] == "deep"
+    assert metrics["first_token_ms"] <= metrics["model_complete_ms"]
+    assert metrics["model_complete_ms"] <= metrics["turn_total_ms"]
+
+
+def test_first_audio_metrics_distinguish_wake_ack_from_spoken_reply():
+    runtime, _ = make_runtime()
+    runtime._begin_turn_metrics(time.monotonic() - 0.05)
+    runtime._mark_speaking("我在。")
+    runtime._mark_speaking("任务已经完成。")
+    assert runtime.audio_metrics["ack_audio_ms"] > 0
+    assert (
+        runtime.audio_metrics["reply_audio_ms"]
+        >= runtime.audio_metrics["ack_audio_ms"]
+    )
+    assert runtime.phase == "speaking"
 
 
 @pytest.mark.anyio

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import re
 import threading
 import wave
@@ -51,8 +52,19 @@ class PiperTTSBackend(TTSBackend):
     def _load_voice(self):
         if self._voice is None:
             from piper import PiperVoice
+            from piper.phonemize_espeak import ESPEAK_DATA_DIR
 
-            self._voice = PiperVoice.load(str(self.model_path), use_cuda=False)
+            # eSpeak's Windows file API cannot open Unicode installation paths.
+            # The desktop starts in its own root; an ASCII relative data path
+            # also prevents eSpeak from falling back to its build-machine path.
+            data_path = str(ESPEAK_DATA_DIR)
+            if os.name == "nt" and not data_path.isascii():
+                data_path = os.path.relpath(data_path)
+                if not data_path.isascii():
+                    raise RuntimeError("请从安装目录启动 Piper 语音，或使用贾维斯桌面快捷方式。")
+            self._voice = PiperVoice.load(
+                str(self.model_path), use_cuda=False, espeak_data_dir=data_path
+            )
         return self._voice
 
     def health(self) -> bool:

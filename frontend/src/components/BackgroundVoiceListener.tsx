@@ -7,6 +7,7 @@ import { responseLanguage, selectedVoiceProfile } from '../lib/voice-settings';
 import { useVoiceActivity } from '../lib/voice-activity';
 import { pauseVoiceConversation } from '../lib/voice-controls';
 import { VoiceRecovery } from '../lib/voice-recovery';
+import { voiceTurnTimingLabel, type VoiceTurnTiming } from '../lib/voice-timing';
 
 interface VoiceState {
   running: boolean;
@@ -15,12 +16,14 @@ interface VoiceState {
   revision: number;
   session_id?: string;
   model?: string;
+  mode?: 'chat' | 'tool' | 'deep';
   messages: ChatMessage[];
   last_transcript?: string;
   input_level?: number;
-  audio_metrics?: {
+  audio_metrics?: VoiceTurnTiming & {
     utterance_ms?: number;
     endpoint_pause_ms?: number;
+    endpoint_target_ms?: number;
     transcription_ms?: number;
     queue_delay_ms?: number;
     queue_drops?: number;
@@ -37,6 +40,7 @@ interface VoiceState {
 /** Python owns recording and playback; hiding this window has no audio effect. */
 export function BackgroundVoiceListener() {
   const settings = useAppStore((s) => s.settings);
+  const selectedModel = useAppStore((s) => s.selectedModel);
   const [voice, setVoice] = useState<VoiceState | null>(null);
   const [error, setError] = useState('');
   const [pollError, setPollError] = useState('');
@@ -83,7 +87,7 @@ export function BackgroundVoiceListener() {
             followup_seconds: settings.voiceIdleSeconds, interrupt_words: settings.interruptWords,
             speak: settings.voiceOutputEnabled && settings.voiceAutoplay,
             automatic_routing: settings.automaticModelRouting,
-            fast_model: settings.defaultModel,
+            fast_model: selectedModel || settings.defaultModel,
           } : {}),
         });
         if (!res.ok) {
@@ -99,7 +103,7 @@ export function BackgroundVoiceListener() {
   }, [enabled, settings.recognitionLanguage, settings.voiceId, settings.voiceSpeed,
     settings.voiceOutputEnabled, settings.voiceAutoplay, settings.automaticModelRouting, settings.defaultModel,
     settings.outputLanguage, settings.characterId, settings.voiceProfileZh, settings.voiceProfileEn, settings.speechPauseMs,
-    settings.voiceIdleSeconds, settings.interruptWords, recoveryAttempt]);
+    settings.voiceIdleSeconds, settings.interruptWords, recoveryAttempt, selectedModel]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -166,8 +170,15 @@ export function BackgroundVoiceListener() {
   const metrics = voice?.audio_metrics;
   const timing = metrics?.utterance_ms
     ? zh
-      ? `语音 ${(metrics.utterance_ms / 1000).toFixed(1)} 秒 · 句尾 ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)} 秒 · 识别 ${((metrics.transcription_ms || 0) / 1000).toFixed(1)} 秒`
-      : `Speech ${(metrics.utterance_ms / 1000).toFixed(1)}s · endpoint ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)}s · ASR ${((metrics.transcription_ms || 0) / 1000).toFixed(1)}s`
+      ? `语音 ${(metrics.utterance_ms / 1000).toFixed(1)} 秒 · 句尾 ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)} 秒（目标 ${((metrics.endpoint_target_ms || 0) / 1000).toFixed(1)}）· 识别 ${((metrics.transcription_ms || 0) / 1000).toFixed(1)} 秒`
+      : `Speech ${(metrics.utterance_ms / 1000).toFixed(1)}s · endpoint ${((metrics.endpoint_pause_ms || 0) / 1000).toFixed(1)}s (target ${((metrics.endpoint_target_ms || 0) / 1000).toFixed(1)}) · ASR ${((metrics.transcription_ms || 0) / 1000).toFixed(1)}s`
+    : '';
+  const turnTiming = metrics ? voiceTurnTimingLabel(metrics, zh) : '';
+  const modeLabels = zh
+    ? { chat: '对话', tool: '工具', deep: '深度' }
+    : { chat: 'Chat', tool: 'Tools', deep: 'Deep' };
+  const routeLabel = voice?.model
+    ? `${modeLabels[voice.mode || 'chat']} · ${voice.model}`
     : '';
   // The chat composer contains the full live monitor. Keep this compact control
   // on other pages without overlapping the input area or repeating transcripts.
@@ -176,7 +187,9 @@ export function BackgroundVoiceListener() {
     <div><div>{problem || labels[voice?.phase || 'starting'] || voice?.phase}</div>
       <meter min={0} max={1} value={voice?.input_level || 0} aria-label={zh ? '麦克风音量' : 'Microphone level'} className="mt-1 h-1 w-20" />
       {voice?.last_transcript && <div className="mt-1 opacity-70" data-i18n-ignore>{zh ? '最近听到：' : 'Last heard: '}{voice.last_transcript}</div>}
+      {routeLabel && <div className="mt-1 opacity-70" data-i18n-ignore>{routeLabel}</div>}
       {timing && <div className="mt-1 opacity-60" title={zh ? '仅记录时长和计数，不保存麦克风录音' : 'Timings and counts only; microphone audio is not stored'}>{timing}</div>}
+      {turnTiming && <div className="mt-1 opacity-60" title={zh ? '从转写完成到当前语音回合各阶段的耗时' : 'Elapsed time from completed transcription through each turn stage'}>{turnTiming}</div>}
     </div>
     <button onClick={() => void pauseVoiceConversation()}
       aria-label={zh ? '暂停语音接听' : 'Pause listening'}>{zh ? '暂停' : 'Pause'}</button>

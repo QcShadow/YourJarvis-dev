@@ -15,7 +15,7 @@ import type {
   TokenUsage,
 } from '../types';
 import type { ManagedAgent } from './api';
-import { isEmbedOnlyModel } from './model-capabilities';
+import { isConversationModel } from './model-capabilities';
 import { serializeToolCallArguments } from './tool-call';
 import type { ColorScheme } from './palettes';
 import { migrateSpeechPause, VOICE_TIMING_VERSION } from './voice-settings';
@@ -547,17 +547,17 @@ export const useAppStore = create<AppState>((set, get) => {
         // same list as chat models. Auto-picking models[0] selected the
         // embedder and every chat failed with HTTP 400 "does not support
         // chat". Prefer a real chat model for selection / fallback.
-        const chatModels = models.filter((m) => !isEmbedOnlyModel(m.id));
+        const chatModels = models.filter((m) => isConversationModel(m.id));
         const preferred =
           (state.settings.defaultModel &&
             chatModels.some((m) => m.id === state.settings.defaultModel) &&
             state.settings.defaultModel) ||
           chatModels[0]?.id ||
-          models.find((m) => !isEmbedOnlyModel(m.id))?.id ||
+          models.find((m) => isConversationModel(m.id))?.id ||
           '';
 
         const currentIsBad =
-          !!state.selectedModel && isEmbedOnlyModel(state.selectedModel);
+          !!state.selectedModel && !isConversationModel(state.selectedModel);
         const currentMissing =
           !!state.selectedModel &&
           !models.some((m) => m.id === state.selectedModel);
@@ -573,7 +573,12 @@ export const useAppStore = create<AppState>((set, get) => {
         return { models };
       }),
     setModelsLoading: (loading: boolean) => set({ modelsLoading: loading }),
-    setSelectedModel: (model: string) => set({ selectedModel: model }),
+    setSelectedModel: (model: string) => {
+      if (!isConversationModel(model)) return;
+      const settings = { ...get().settings, defaultModel: model };
+      saveSettings(settings);
+      set({ selectedModel: model, settings });
+    },
     setServerInfo: (info: ServerInfo | null) => set({ serverInfo: info }),
     setSavings: (data: SavingsData | null) => set({ savings: data }),
     incrementSavings: (usage: TokenUsage) => {

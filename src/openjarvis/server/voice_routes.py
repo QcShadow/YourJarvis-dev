@@ -76,6 +76,9 @@ async def _respond(app, history, options):
     )
 
     prompt = history[-1]["content"]
+    request = Request(
+        {"type": "http", "app": app, "headers": [], "client": ("127.0.0.1", 0)}
+    )
     route = {"mode": _obvious_mode(prompt) or "chat", "model": options.fast_model}
     if getattr(app.state, "engine_name", "") == "api":
         route = {"mode": _obvious_mode(prompt) or "chat", "model": app.state.model}
@@ -85,7 +88,8 @@ async def _respond(app, history, options):
                 prompt=prompt[:6000],
                 fast_model=options.fast_model,
                 strong_model=options.strong_model,
-            )
+            ),
+            request,
         )
     if options.speech_detail == "full" and any(
         m["role"] == "tool" and m.get("name") == "web_search" for m in history
@@ -96,9 +100,6 @@ async def _respond(app, history, options):
         route["mode"] = "tool"
     yield {"model": route["model"]}
     yield {"mode": route["mode"]}
-    request = Request(
-        {"type": "http", "app": app, "headers": [], "client": ("127.0.0.1", 0)}
-    )
     response = await chat_completions(
         ChatCompletionRequest(
             model=route["model"],
@@ -250,6 +251,7 @@ async def _start_voice(body: StartVoiceRequest, request: Request):
             respond=lambda history, options: _respond(app, history, options),
             synthesize=synthesize,
             synthesize_stream=stream_callback,
+            warm_speech=getattr(tts, "warmup", None),
         )
         app.state.voice_runtime = runtime
         runtime.delegate = lambda history, options: _delegate_background(
@@ -258,6 +260,7 @@ async def _start_voice(body: StartVoiceRequest, request: Request):
     elif tts is not None:
         runtime.synthesize = synthesize
         runtime.synthesize_stream = stream_callback
+        runtime.warm_speech = getattr(tts, "warmup", None)
     if runtime is not None and getattr(runtime, "delegate", None) is None:
         runtime.delegate = lambda history, options: _delegate_background(
             app, history, options, runtime.session_id

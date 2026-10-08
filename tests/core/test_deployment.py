@@ -122,6 +122,8 @@ def test_package_excludes_owner_state_and_large_models(tmp_path):
         "install-jarvis.ps1",
         "install-jarvis.cmd",
         "install-worker.ps1",
+        "install-speech.ps1",
+        "configure_speech.py",
         "configure_portable.py",
         "bootstrap.ps1",
         "bootstrap.cmd",
@@ -134,6 +136,10 @@ def test_package_excludes_owner_state_and_large_models(tmp_path):
         "THIRD_PARTY_NOTICES.md",
     ):
         (tmp_path / "src/deploy/share" / name).write_text("fixture")
+    voice = tmp_path / "src/deploy/share/voice"
+    voice.mkdir()
+    for name in ("qwen_tts_server.py", "qwen_voice_audio.py"):
+        (voice / name).write_text("fixture")
     (tmp_path / "tools/uv").mkdir(parents=True)
     (tmp_path / "tools/uv/uv.exe").write_bytes(b"fixture")
     for name in (

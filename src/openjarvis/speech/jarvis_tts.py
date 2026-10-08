@@ -127,6 +127,21 @@ class JarvisTTSBackend(TTSBackend):
         except Exception:
             return False
 
+    def warmup(self) -> bool:
+        """Prime the Mandarin model so the next spoken reply can start promptly."""
+        self._ensure_worker()
+        request = urllib.request.Request(
+            self.url + "/warmup",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=180) as response:
+            data = json.load(response)
+        if not data.get("loaded"):
+            raise RuntimeError("JARVIS Mandarin voice could not be warmed")
+        return True
+
     def available_voices(self) -> list[str]:
         return ["jarvis-high"]
 
